@@ -1,4 +1,3 @@
-
 from src.fisica import simular, energia, aceleraciones
 import numpy as np
 import sys

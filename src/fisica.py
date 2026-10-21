@@ -9,7 +9,8 @@ def aceleraciones(pos, masas, eps):
     diff = pos[None, :, :] - pos[:, None, :]
     r2 = np.sum(diff**2, axis=2) + eps**2
     inv_r3 = r2 ** (-1.5)
-    np.fill_diagonal(inv_r3, 0.0)          # una partícula no se atrae a si misma
+    # una partícula no se atrae a si misma
+    np.fill_diagonal(inv_r3, 0.0)
     peso = masas[None, :] * inv_r3         # (N, N): m_j / r^3
     return G * np.einsum("ij,ijk->ik", peso, diff)
 
@@ -38,7 +39,8 @@ def paso_leapfrog(pos, vel, acc, masas, eps, dt):
     """Un paso kick-drift-kick. 'acc' es la aceleracion en las posiciones actuales."""
     vel = vel + 0.5 * dt * acc                 # kick (medio paso)
     pos = pos + dt * vel                       # drift (paso completo)
-    acc = aceleraciones(pos, masas, eps)       # fuerzas en las nuevas posiciones
+    # fuerzas en las nuevas posiciones
+    acc = aceleraciones(pos, masas, eps)
     vel = vel + 0.5 * dt * acc                 # kick (medio paso)
     return pos, vel, acc
 

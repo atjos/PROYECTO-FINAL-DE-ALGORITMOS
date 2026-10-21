@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Colisión de galaxias · simulación de N cuerpos</title>
+    <style>
+      :root {
+        --bg: #02030a;
+        --fg: #d6def0;
+        --mut: #7f8aa8;
+        --pan: rgba(10, 14, 28, 0.66);
+        --bd: rgba(130, 160, 255, 0.24);
+        --ac: #6ab7ff;
+        color-scheme: dark;
+        box-sizing: border-box;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --bg: #02030a;
+          --fg: #d6def0;
+          --mut: #7f8aa8;
+          --pan: rgba(10, 14, 28, 0.66);
+          --bd: rgba(130, 160, 255, 0.24);
+          --ac: #6ab7ff;
+        }
+      }
+      :root[data-theme="dark"] {
+        --bg: #02030a;
+        --fg: #d6def0;
+        --mut: #7f8aa8;
+        --pan: rgba(10, 14, 28, 0.66);
+        --bd: rgba(130, 160, 255, 0.24);
+        --ac: #6ab7ff;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        overflow: hidden;
+        font:
+          13px/1.4 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+      #c {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        touch-action: none;
+      }
+      .box {
+        position: fixed;
+        background: var(--pan);
+        border: 1px solid var(--bd);
+        border-radius: 12px;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+      #hud {
+        left: 12px;
+        top: calc(12px + env(safe-area-inset-top, 0px));
+        padding: 10px 12px;
+        width: 236px;
+      }
+      #hud h1 {
+        font-size: 14px;
+        margin: 0 0 4px;
+        letter-spacing: 0.04em;
+      }
+      #st {
+        color: var(--mut);
+        font-variant-numeric: tabular-nums;
+        white-space: pre;
+      }
+      #st b {
+        color: var(--fg);
+        font-weight: 600;
+      }
+      #gr {
+        width: 100%;
+        height: 56px;
+        margin-top: 6px;
+        display: block;
+      }
+      #pn {
+        right: 12px;
+        top: calc(12px + env(safe-area-inset-top, 0px));
+        width: 236px;
+        max-height: calc(
+          100% - 24px - env(safe-area-inset-top, 0px) -
+            env(safe-area-inset-bottom, 0px)
+        );
+        overflow: auto;
+        padding: 10px 12px;
+      }
+      #pn.min .body {
+        display: none;
+      }
+      #pn label {
+        display: block;
+        margin: 8px 0 2px;
+        color: var(--mut);
+        font-size: 12px;
+      }
+      #pn select,
+      #pn input[type="range"] {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      #pn select {
+        background: #0b1022;
+        color: var(--fg);
+        border: 1px solid var(--bd);
+        border-radius: 8px;
+        padding: 5px;
+      }
+      .row {
+        display: flex;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      button {
+        flex: 1;
+        background: #101a3a;
+        color: var(--fg);
+        border: 1px solid var(--bd);
+        border-radius: 8px;
+        padding: 7px;
+        cursor: pointer;
+        font: inherit;
+      }
+      button:hover {
+        border-color: var(--ac);
+      }
+      .ck {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        margin-top: 8px;
+        color: var(--fg);
+      }
+      .note {
+        margin-top: 10px;
+        color: var(--mut);
+        font-size: 11px;
+      }
+      #ttl {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      @media (max-width: 640px) {
+        #hud {
+          width: 190px;
+        }
+        #pn {
+          width: 200px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div id="hud" class="box">
+      <h1>🌌 Colisión de galaxias</h1>
+      <div id="st"></div>
+      <canvas id="gr" width="440" height="112"></canvas>
+    </div>
+    <div id="pn" class="box">
+      <div id="ttl"><span>Controles</span><span id="tg">–</span></div>
+      <div class="body">
+        <label>Escenario</label
+        ><select id="pre">
+          <option value="col">Colisión (la de tu simulación)</option>
+          <option value="ant">Antenas: colas de marea</option>
+          <option value="fro">Impacto frontal</option>
+          <option value="ret">Encuentro retrógrado</option>
+          <option value="dav">Canibalismo: galaxia pequeña</option>
+        </select>
+        <label>Estrellas: <span id="vn"></span></label
+        ><input
+          id="n"
+          type="range"
+          min="2000"
+          max="40000"
+          step="1000"
+          value="16000"
+        />
+        <label>Color</label
+        ><select id="col">
+          <option value="0">Velocidad</option>
+          <option value="1">Galaxia de origen</option>
+          <option value="2">Colas de marea (lejos del núcleo)</option>
+        </select>
+        <label>Velocidad de simulación</label
+        ><input id="sp" type="range" min="1" max="8" step="1" value="3" />
+        <label>Estela</label
+        ><input id="tr" type="range" min="0" max="100" value="55" />
+        <label>Brillo</label
+        ><input id="br" type="range" min="30" max="200" value="100" />
+        <div class="ck">
+          <input id="ar" type="checkbox" checked /><span>Cámara giratoria</span>
+        </div>
+        <div class="ck">
+          <input id="az" type="checkbox" checked /><span>Zoom automático</span>
+        </div>
+        <div class="row">
+          <button id="pa">Pausa</button><button id="rs">Reiniciar</button>
+        </div>
+        <div class="note">
+          Arrastra para orbitar, rueda o pellizco para zoom. G = 1, ε = 0,05,
+          integrador leapfrog (kick-drift-kick). Las estrellas son partículas de
+          prueba en el campo de los dos núcleos (problema restringido de
+          Toomre).
+        </div>
+      </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+      //PHYS-START
+      const EPS = 0.05,
+        EPSG = 0.7,
+        RD = 1,
+        DT = 0.01,
+        SEP = 12;
+      const PRE = {
+        col: { fr: 0.6, b: 3, i1: 0, i2: 60, s2: 1, q: 1 },
+        ant: { fr: 0.95, b: 3, i1: 15, i2: 25, s2: 1, q: 1 },
+        fro: { fr: 0.6, b: 0.3, i1: 0, i2: 60, s2: 1, q: 1 },
+        ret: { fr: 0.75, b: 3, i1: 0, i2: 30, s2: -1, q: 1 },
+        dav: { fr: 0.7, b: 3.5, i1: 0, i2: 40, s2: 1, q: 0.35 },
+      };
+      let seed = 1;
+      function rnd() {
+        seed |= 0;
+        seed = (seed + 0x6d2b79f5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      }
+      function gau() {
+        return (
+          Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(6.283185307 * rnd())
+        );
+      }
+      function menc(r, Mn, Md) {
+        return Mn + Md * (1 - (1 + r / RD) * Math.exp(-r / RD));
+      }
+      let S = {
+        n: 0,
+        pos: null,
+        vel: null,
+        acc: null,
+        gal: null,
+        g: [],
+        t: 0,
+        E0: 1,
+        dE: 0,
+        sep: 0,
+      };
+      function build(n, key) {
+        const P = PRE[key];
+        seed = 1;
+        const q = P.q,
+          n1 = Math.round(n / (1 + q)),
+          n2 = n - n1;
+        const g = [
+          { M: 1, Mn: 0.8, Md: 0.2, n: n1, inc: (P.i1 * Math.PI) / 180, s: 1 },
+          {
+            M: q,
+            Mn: 0.8 * q,
+            Md: 0.2 * q,
+            n: n2,
+            inc: (P.i2 * Math.PI) / 180,
+            s: P.s2,
+          },
+        ];
+        const Mt = 1 + q,
+          vrel = P.fr * Math.sqrt((2 * Mt) / SEP);
+        const rr = [SEP, P.b, 0],
+          uu = [-vrel, 0, 0];
+        g[0].c = rr.map((x) => (-q / Mt) * x);
+        g[0].v = uu.map((x) => (-q / Mt) * x);
+        g[1].c = rr.map((x) => (1 / Mt) * x);
+        g[1].v = uu.map((x) => (1 / Mt) * x);
+        const N = n1 + n2;
+        S.n = N;
+        S.pos = new Float32Array(3 * N);
+        S.vel = new Float32Array(3 * N);
+        S.acc = new Float32Array(3 * N);
+        S.gal = new Uint8Array(N);
+        let k = 0;
+        for (let gi = 0; gi < 2; gi++) {
+          const G = g[gi],
+            ci = Math.cos(G.inc),
+            si = Math.sin(G.inc);
+          for (let a = 0; a < G.n; a++, k++) {
+            let R;
+            do {
+              R = -RD * Math.log((1 - rnd()) * (1 - rnd()));
+            } while (R < 0.2 || R > 5);
+            const ph = 6.283185307 * rnd(),
+              z = gau() * 0.05 * RD,
+              m = menc(R, G.Mn, G.Md);
+            const vc = Math.sqrt(
+                (m * R * R) / Math.pow(R * R + EPS * EPS, 1.5),
+              ),
+              sg = 0.03 * vc;
+            const x = R * Math.cos(ph),
+              y = R * Math.sin(ph);
+            const vx = -G.s * vc * Math.sin(ph) + gau() * sg,
+              vy = G.s * vc * Math.cos(ph) + gau() * sg,
+              vz = gau() * sg;
+            S.pos[3 * k] = x + G.c[0];
+            S.pos[3 * k + 1] = y * ci - z * si + G.c[1];
+            S.pos[3 * k + 2] = y * si + z * ci + G.c[2];
+            S.vel[3 * k] = vx + G.v[0];
+            S.vel[3 * k + 1] = vy * ci - vz * si + G.v[1];
+            S.vel[3 * k + 2] = vy * si + vz * ci + G.v[2];
+            S.gal[k] = gi;
+          }
+        }
+        S.g = g;
+        S.t = 0;
+        accAll();
+        S.E0 = nucE();
+        S.dE = 0;
+        return S;
+      }
+      function accAll() {
+        const p = S.pos,
+          a = S.acc,
+          G0 = S.g[0],
+          G1 = S.g[1];
+        for (let i = 0; i < S.n; i++) {
+          const x = p[3 * i],
+            y = p[3 * i + 1],
+            z = p[3 * i + 2];
+          let ax = 0,
+            ay = 0,
+            az = 0;
+          for (let j = 0; j < 2; j++) {
+            const G = S.g[j],
+              dx = G.c[0] - x,
+              dy = G.c[1] - y,
+              dz = G.c[2] - z,
+              d2 = dx * dx + dy * dy + dz * dz,
+              r2 = d2 + EPS * EPS;
+            const f = menc(Math.sqrt(d2), G.Mn, G.Md) / (r2 * Math.sqrt(r2));
+            ax += dx * f;
+            ay += dy * f;
+            az += dz * f;
+          }
+          a[3 * i] = ax;
+          a[3 * i + 1] = ay;
+          a[3 * i + 2] = az;
+        }
+      }
+      function gacc() {
+        const A = S.g[0],
+          B = S.g[1];
+        const d = [B.c[0] - A.c[0], B.c[1] - A.c[1], B.c[2] - A.c[2]];
+        const r2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2] + EPSG * EPSG,
+          f = 1 / (r2 * Math.sqrt(r2));
+        return [d.map((x) => B.M * x * f), d.map((x) => -A.M * x * f)];
+      }
+      function nucE() {
+        const A = S.g[0],
+          B = S.g[1];
+        let K = 0,
+          d2 = 0;
+        for (let k = 0; k < 3; k++) {
+          K += 0.5 * A.M * A.v[k] ** 2 + 0.5 * B.M * B.v[k] ** 2;
+          d2 += (B.c[k] - A.c[k]) ** 2;
+        }
+        S.sep = Math.sqrt(d2);
+        return K - (A.M * B.M) / Math.sqrt(d2 + EPSG * EPSG);
+      }
+      function step() {
+        const h = 0.5 * DT,
+          p = S.pos,
+          v = S.vel,
+          a = S.acc,
+          n3 = 3 * S.n;
+        for (let i = 0; i < n3; i++) {
+          v[i] += h * a[i];
+          p[i] += DT * v[i];
+        }
+        let ga = gacc();
+        for (let j = 0; j < 2; j++) {
+          const G = S.g[j];
+          for (let k = 0; k < 3; k++) {
+            G.v[k] += h * ga[j][k];
+            G.c[k] += DT * G.v[k];
+          }
+        }
+        accAll();
+        ga = gacc();
+        for (let i = 0; i < n3; i++) v[i] += h * a[i];
+        for (let j = 0; j < 2; j++) {
+          const G = S.g[j];
+          for (let k = 0; k < 3; k++) G.v[k] += h * ga[j][k];
+        }
+        S.t += DT;
+        const E = nucE();
+        S.dE = Math.abs(E / S.E0 - 1);
+      }
+      //PHYS-END
+      const $ = (id) => document.getElementById(id);
+      const cv = $("c"),
+        DPR = Math.min(window.devicePixelRatio || 1, 2);
+      const R = new THREE.WebGLRenderer({
+        canvas: cv,
+        antialias: false,
+        preserveDrawingBuffer: true,
+      });
+      R.setPixelRatio(DPR);
+      R.autoClear = false;
+      R.setClearColor(0x02030a, 1);
+      const scene = new THREE.Scene(),
+        camera = new THREE.PerspectiveCamera(50, 1, 0.1, 3000);
+      const fadeScene = new THREE.Scene(),
+        fadeCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      const fade = new THREE.Mesh(
+        new THREE.PlaneGeometry(2, 2),
+        new THREE.MeshBasicMaterial({
+          color: 0x02030a,
+          transparent: true,
+          opacity: 0.2,
+          depthTest: false,
+          depthWrite: false,
+        }),
+      );
+      fadeScene.add(fade);
+      const VS =
+        "attribute vec3 color;varying vec3 vC;uniform float uSize,uPx,uDpr;void main(){vC=color;vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;gl_PointSize=max(uSize*uPx/-mv.z,1.5*uDpr);}";
+      const FS =
+        "varying vec3 vC;uniform float uGain,uCore;void main(){vec2 p=gl_PointCoord-.5;float d=length(p)*2.;if(d>1.)discard;float a=exp(-d*d*4.)*(1.-d*d);a+=uCore*exp(-d*d*28.);gl_FragColor=vec4(vC*uGain,a);}";
+      function mat(size, gain, core) {
+        return new THREE.ShaderMaterial({
+          vertexShader: VS,
+          fragmentShader: FS,
+          transparent: true,
+          depthWrite: false,
+          depthTest: false,
+          blending: THREE.AdditiveBlending,
+          uniforms: {
+            uSize: { value: size },
+            uGain: { value: gain },
+            uCore: { value: core },
+            uPx: { value: 500 },
+            uDpr: { value: DPR },
+          },
+        });
+      }
+      const mStar = mat(0.075, 0.9, 0.5),
+        mNuc = mat(2.2, 0.95, 1.6),
+        mBg = mat(1.1, 0.55, 0);
+      // fondo de estrellas lejanas
+      {
+        const m = 1400,
+          p = new Float32Array(3 * m),
+          c = new Float32Array(3 * m);
+        for (let i = 0; i < m; i++) {
+          const u = Math.random() * 2 - 1,
+            t = Math.random() * 6.283,
+            r = Math.sqrt(1 - u * u),
+            d = 700 + Math.random() * 500;
+          p[3 * i] = d * r * Math.cos(t);
+          p[3 * i + 1] = d * r * Math.sin(t);
+          p[3 * i + 2] = d * u;
+          const b = 0.15 + Math.random() * 0.6,
+            w = Math.random();
+          c[3 * i] = b * (0.7 + 0.3 * w);
+          c[3 * i + 1] = b * 0.85;
+          c[3 * i + 2] = b * (1 - 0.25 * w);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+        g.setAttribute("color", new THREE.BufferAttribute(c, 3));
+        const pts = new THREE.Points(g, mBg);
+        pts.frustumCulled = false;
+        scene.add(pts);
+      }
+      // nucleos y estelas largas
+      const nPos = new Float32Array(6),
+        nCol = new Float32Array([0.75, 0.9, 1, 1, 0.8, 0.55]);
+      const nG = new THREE.BufferGeometry();
+      nG.setAttribute("position", new THREE.BufferAttribute(nPos, 3));
+      nG.setAttribute("color", new THREE.BufferAttribute(nCol, 3));
+      const nuc = new THREE.Points(nG, mNuc);
+      nuc.frustumCulled = false;
+      scene.add(nuc);
+      const TL = 900,
+        tr = [new Float32Array(3 * TL), new Float32Array(3 * TL)];
+      let trN = 0;
+      const trL = [];
+      for (let j = 0; j < 2; j++) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.BufferAttribute(tr[j], 3));
+        const l = new THREE.Line(
+          g,
+          new THREE.LineBasicMaterial({
+            color: j ? 0xffa860 : 0x78c8ff,
+            transparent: true,
+            opacity: 0.5,
+            blending: THREE.AdditiveBlending,
+            depthTest: false,
+          }),
+        );
+        l.frustumCulled = false;
+        scene.add(l);
+        trL.push(l);
+      }
+      // estrellas
+      let stars = null,
+        col = null,
+        sGeo = null;
+      function mkStars() {
+        if (stars) {
+          scene.remove(stars);
+          sGeo.dispose();
+        }
+        col = new Float32Array(3 * S.n);
+        sGeo = new THREE.BufferGeometry();
+        sGeo.setAttribute(
+          "position",
+          new THREE.BufferAttribute(S.pos, 3).setUsage(THREE.DynamicDrawUsage),
+        );
+        sGeo.setAttribute(
+          "color",
+          new THREE.BufferAttribute(col, 3).setUsage(THREE.DynamicDrawUsage),
+        );
+        stars = new THREE.Points(sGeo, mStar);
+        stars.frustumCulled = false;
+        scene.add(stars);
+      }
+      // paletas (LUT)
+      function lut(stops) {
+        const o = new Float32Array(768);
+        for (let i = 0; i < 256; i++) {
+          const t = (i / 255) * (stops.length - 1),
+            k = Math.min(Math.floor(t), stops.length - 2),
+            f = t - k;
+          for (let c = 0; c < 3; c++)
+            o[3 * i + c] = stops[k][c] * (1 - f) + stops[k + 1][c] * f;
+        }
+        return o;
+      }
+      const PV = lut([
+        [0.16, 0.24, 1],
+        [0.25, 0.66, 1],
+        [0.75, 0.92, 1],
+        [1, 0.95, 0.8],
+        [1, 0.7, 0.3],
+        [1, 0.3, 0.18],
+      ]);
+      const PT = lut([
+        [0.2, 0.3, 0.7],
+        [0.35, 0.55, 1],
+        [0.8, 0.5, 1],
+        [1, 0.4, 0.7],
+        [1, 0.85, 0.6],
+        [1, 1, 1],
+      ]);
+      const GC = [
+        [0.3, 0.72, 1],
+        [1, 0.55, 0.2],
+      ];
+      function colors(mode) {
+        const p = S.pos,
+          v = S.vel,
+          n = S.n;
+        for (let i = 0; i < n; i++) {
+          const vx = v[3 * i],
+            vy = v[3 * i + 1],
+            vz = v[3 * i + 2],
+            sp = Math.sqrt(vx * vx + vy * vy + vz * vz);
+          let r, g, b;
+          if (mode === 0) {
+            const k = 3 * Math.min(255, ((sp / 1.1) * 255) | 0);
+            r = PV[k];
+            g = PV[k + 1];
+            b = PV[k + 2];
+          } else if (mode === 1) {
+            const c = GC[S.gal[i]],
+              f = 0.6 + 0.5 * Math.min(sp / 1.1, 1.2);
+            r = c[0] * f;
+            g = c[1] * f;
+            b = c[2] * f;
+          } else {
+            const G = S.g[S.gal[i]],
+              dx = p[3 * i] - G.c[0],
+              dy = p[3 * i + 1] - G.c[1],
+              dz = p[3 * i + 2] - G.c[2],
+              d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            const t = Math.min(Math.max((d - 3.5) / 10, 0), 1),
+              k = 3 * ((t * 255) | 0),
+              f = 0.45 + 1.3 * t;
+            r = PT[k] * f;
+            g = PT[k + 1] * f;
+            b = PT[k + 2] * f;
+          }
+          col[3 * i] = r;
+          col[3 * i + 1] = g;
+          col[3 * i + 2] = b;
+        }
+        sGeo.attributes.color.needsUpdate = true;
+      }
+      // camara
+      let th = 0.6,
+        ph = 0.55,
+        dist = 46,
+        dd = 46,
+        paused = false;
+      function placeCam() {
+        camera.position.set(
+          dist * Math.cos(ph) * Math.cos(th),
+          dist * Math.cos(ph) * Math.sin(th),
+          dist * Math.sin(ph),
+        );
+        camera.up.set(0, 0, 1);
+        camera.lookAt(0, 0, 0);
+      }
+      const ptrs = new Map();
+      let pd = 0;
+      cv.addEventListener("pointerdown", (e) => {
+        cv.setPointerCapture(e.pointerId);
+        ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+        pd = 0;
+      });
+      cv.addEventListener("pointerup", (e) => ptrs.delete(e.pointerId));
+      cv.addEventListener("pointercancel", (e) => ptrs.delete(e.pointerId));
+      cv.addEventListener("pointermove", (e) => {
+        const o = ptrs.get(e.pointerId);
+        if (!o) return;
+        if (ptrs.size === 1) {
+          th -= (e.clientX - o[0]) * 0.006;
+          ph = Math.max(-1.45, Math.min(1.45, ph + (e.clientY - o[1]) * 0.006));
+        }
+        ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+        if (ptrs.size === 2) {
+          const q = [...ptrs.values()],
+            d = Math.hypot(q[0][0] - q[1][0], q[0][1] - q[1][1]);
+          if (pd) {
+            dd = Math.max(8, Math.min(300, (dd * pd) / d));
+            $("az").checked = false;
+          }
+          pd = d;
+        }
+      });
+      cv.addEventListener(
+        "wheel",
+        (e) => {
+          e.preventDefault();
+          dd = Math.max(8, Math.min(300, dd * Math.exp(e.deltaY * 0.001)));
+          $("az").checked = false;
+        },
+        { passive: false },
+      );
+      function resize() {
+        const w = innerWidth,
+          h = innerHeight;
+        R.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        const px =
+          R.domElement.height / (2 * Math.tan((camera.fov * Math.PI) / 360));
+        [mStar, mNuc, mBg].forEach((m) => (m.uniforms.uPx.value = px));
+        R.clear();
+      }
+      addEventListener("resize", resize);
+      // reinicio
+      const hist = [];
+      function reset() {
+        build(+$("n").value, $("pre").value);
+        mkStars();
+        trN = 0;
+        trL.forEach((l) => l.geometry.setDrawRange(0, 0));
+        hist.length = 0;
+        R.clear();
+      }
+      function ui() {
+        $("vn").textContent = (+$("n").value).toLocaleString("es");
+      }
+      $("n").oninput = ui;
+      $("n").onchange = reset;
+      $("pre").onchange = reset;
+      $("rs").onclick = reset;
+      $("pa").onclick = () => {
+        paused = !paused;
+        $("pa").textContent = paused ? "Seguir" : "Pausa";
+      };
+      $("ttl").onclick = () => {
+        $("pn").classList.toggle("min");
+        $("tg").textContent = $("pn").classList.contains("min") ? "+" : "–";
+      };
+      if (innerWidth < 640) {
+        $("pn").classList.add("min");
+        $("tg").textContent = "+";
+      }
+      // grafico
+      const gr = $("gr").getContext("2d");
+      function graf() {
+        const W = 440,
+          H = 112;
+        gr.clearRect(0, 0, W, H);
+        gr.strokeStyle = "rgba(130,160,255,.25)";
+        gr.strokeRect(0.5, 0.5, W - 1, H - 1);
+        if (hist.length < 2) return;
+        const mx = Math.max(...hist, 1);
+        gr.beginPath();
+        hist.forEach((s, i) => {
+          const x = (i / (hist.length - 1)) * (W - 8) + 4,
+            y = H - 6 - (s / mx) * (H - 14);
+          i ? gr.lineTo(x, y) : gr.moveTo(x, y);
+        });
+        gr.strokeStyle = "#6ab7ff";
+        gr.lineWidth = 2;
+        gr.stroke();
+        gr.fillStyle = "#7f8aa8";
+        gr.font = "18px system-ui";
+        gr.fillText("distancia entre núcleos", 8, 20);
+      }
+      // bucle
+      let last = performance.now(),
+        fps = 60,
+        fr = 0;
+      function loop(now) {
+        requestAnimationFrame(loop);
+        const d = now - last;
+        last = now;
+        fps = fps * 0.95 + 0.05 * (1000 / Math.max(d, 1));
+        fr++;
+        if (!paused) {
+          const k = +$("sp").value;
+          for (let s = 0; s < k; s++) step();
+          const A = S.g[0].c,
+            B = S.g[1].c;
+          nPos.set([A[0], A[1], A[2], B[0], B[1], B[2]]);
+          nG.attributes.position.needsUpdate = true;
+          for (let j = 0; j < 2; j++) {
+            const a = tr[j];
+            a.copyWithin(0, 3);
+            const c = S.g[j].c;
+            a[3 * TL - 3] = c[0];
+            a[3 * TL - 2] = c[1];
+            a[3 * TL - 1] = c[2];
+            trL[j].geometry.attributes.position.needsUpdate = true;
+          }
+          trN = Math.min(trN + 1, TL);
+          trL.forEach((l) => l.geometry.setDrawRange(TL - trN, trN));
+          if (fr % 4 === 0) {
+            hist.push(S.sep);
+            if (hist.length > 260) hist.shift();
+          }
+        }
+        colors(+$("col").value);
+        sGeo.attributes.position.needsUpdate = true;
+        const b = +$("br").value / 100;
+        mStar.uniforms.uGain.value = 0.9 * b;
+        mNuc.uniforms.uGain.value = 0.95 * Math.min(b, 1.3);
+        if ($("ar").checked) th += 0.0016 * (d / 16);
+        if ($("az").checked && fr % 8 === 0) {
+          let s = 0,
+            c = 0;
+          for (let i = 0; i < S.n; i += Math.max(1, (S.n / 500) | 0)) {
+            const x = S.pos[3 * i],
+              y = S.pos[3 * i + 1],
+              z = S.pos[3 * i + 2];
+            s += x * x + y * y + z * z;
+            c++;
+          }
+          dd = Math.max(22, Math.min(110, Math.sqrt(s / c) * 3.4));
+        }
+        dist += (dd - dist) * 0.04;
+        placeCam();
+        const tv = +$("tr").value;
+        fade.material.opacity = tv === 0 ? 1 : 0.5 - 0.0042 * tv;
+        R.render(fadeScene, fadeCam);
+        R.render(scene, camera);
+        if (fr % 6 === 0) {
+          $("st").innerHTML =
+            "t  <b>" +
+            S.t.toFixed(1) +
+            "</b>   N  <b>" +
+            S.n.toLocaleString("es") +
+            "</b>\nd núcleos  <b>" +
+            S.sep.toFixed(2) +
+            "</b>\n|ΔE/E| núcleos  <b>" +
+            S.dE.toExponential(1) +
+            "</b>\n" +
+            Math.round(fps) +
+            " fps";
+          graf();
+        }
+      }
+      ui();
+      resize();
+      reset();
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>

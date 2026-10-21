@@ -1,14 +1,3 @@
-"""
-cpu_paralelo.py - Version paralela en CPU (Numba) del simulador de N cuerpos.
-
-Idea: cada aceleracion a_i se calcula de forma INDEPENDIENTE de las demas, asi que el
-bucle exterior (sobre i) se reparte entre los hilos del procesador con prange.
-Cada hilo escribe solo en su propia fila acc[i], por lo que no hay condiciones de carrera.
-
-Se ofrecen dos compilaciones del mismo codigo, para poder comparar:
-    aceleraciones_numba_serial   -> compilada, 1 solo hilo
-    aceleraciones_numba          -> compilada, todos los hilos
-"""
 import numpy as np
 from numba import njit, prange
 
@@ -60,7 +49,8 @@ def _energia_potencial(pos, masas, eps):
 # Mismo codigo, dos compilaciones. Con parallel=False, prange se comporta como range.
 aceleraciones_numba_serial = njit(fastmath=True)(_aceleraciones)
 aceleraciones_numba = njit(parallel=True, fastmath=True)(_aceleraciones)
-energia_potencial_numba = njit(parallel=True, fastmath=True)(_energia_potencial)
+energia_potencial_numba = njit(
+    parallel=True, fastmath=True)(_energia_potencial)
 
 
 def energia(pos, vel, masas, eps):

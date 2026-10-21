@@ -1,21 +1,3 @@
-"""
-gpu_cuda.py - Version GPU (CUDA con Numba) del simulador de N cuerpos.
-
-Ideas clave
------------
-* UN HILO DE GPU POR PARTICULA: el hilo i calcula a_i (como el prange de la version CPU,
-  pero con miles de hilos en vez de 12).
-* MEMORIA COMPARTIDA (tiling): los hilos de un bloque cargan juntos un "tile" de
-  tpb particulas en la memoria compartida (rapida) y todos lo reutilizan, en vez de
-  leer cada particula de la memoria global tpb veces.
-* FLOAT32: la GTX 1650 hace FP64 ~32 veces mas lento que FP32 (lo mostro cuda.detect()).
-* TODO EL ESTADO VIVE EN LA GPU: las posiciones y velocidades no viajan a la CPU en cada
-  paso, solo cuando se guarda una "foto" (cada 'cada' pasos).
-
-Convencion: pos4 es (N, 4) float32 con columnas [x, y, z, masa]; vel y acc son (N, 3) float32.
-CUIDADO con los literales: en Numba un 0.0 suelto es float64 y contaminaria el calculo con
-operaciones FP64 lentas, por eso se usan float32(0.0), float32(1.0), etc.
-"""
 import math
 import functools
 import numpy as np
@@ -31,7 +13,8 @@ def construir_kernels(tpb):
 
     @cuda.jit(fastmath=True)
     def k_acc(pos4, acc, n, eps2):
-        sh = cuda.shared.array((tpb, 4), dtype=float32)     # tile en memoria compartida
+        # tile en memoria compartida
+        sh = cuda.shared.array((tpb, 4), dtype=float32)
         tx = cuda.threadIdx.x
         i = cuda.grid(1)
         cero = float32(0.0)
@@ -61,9 +44,11 @@ def construir_kernels(tpb):
                 sh[tx, 1] = cero
                 sh[tx, 2] = cero
                 sh[tx, 3] = cero
-            cuda.syncthreads()                               # esperar a que el tile este completo
+            # esperar a que el tile este completo
+            cuda.syncthreads()
 
-            for k in range(tpb):                             # interaccion con las tpb particulas del tile
+            # interaccion con las tpb particulas del tile
+            for k in range(tpb):
                 dx = sh[k, 0] - xi
                 dy = sh[k, 1] - yi
                 dz = sh[k, 2] - zi
@@ -73,7 +58,8 @@ def construir_kernels(tpb):
                 ax += dx * s                                 # si j == i: dx=dy=dz=0 -> aporta 0
                 ay += dy * s
                 az += dz * s
-            cuda.syncthreads()                               # no sobreescribir el tile antes de que todos terminen
+            # no sobreescribir el tile antes de que todos terminen
+            cuda.syncthreads()
 
         if i < n:
             acc[i, 0] = ax

@@ -1,10 +1,3 @@
-"""
-condiciones.py - Condiciones iniciales: galaxias de disco y colision de dos galaxias.
-
-Unidades: G = 1. Masa de referencia M0, longitud L0 (ver informe/fisica.md).
-Cada galaxia = 1 particula central masiva (nucleo) + disco de estrellas de masa pequena e igual.
-Convencion: pos, vel -> (N, 3); masas -> (N,)
-"""
 import numpy as np
 
 G = 1.0
@@ -20,8 +13,8 @@ def matriz_rotacion(inclinacion, angulo_z):
 
 
 def crear_galaxia(n_estrellas, masa_nucleo=0.8, masa_disco=0.2, escala_disco=1.0,
-                  r_min=0.2, r_max=5.0, altura=0.05, dispersion=0.03,
-                  eps=0.05, sentido=+1, rng=None):
+                r_min=0.2, r_max=5.0, altura=0.05, dispersion=0.03,
+                eps=0.05, sentido=+1, rng=None):
     """
     Galaxia de disco centrada en el origen, con el disco en el plano x-y.
 
@@ -55,7 +48,8 @@ def crear_galaxia(n_estrellas, masa_nucleo=0.8, masa_disco=0.2, escala_disco=1.0
 
     # --- 3. Velocidad circular: v_c^2 = G M(<R) R^2 / (R^2 + eps^2)^(3/2) ---
     m_estrella = masa_disco / n_estrellas
-    M_dentro = masa_nucleo + m_estrella * np.arange(1, n_estrellas + 1)   # nucleo + estrellas mas internas
+    M_dentro = masa_nucleo + m_estrella * \
+        np.arange(1, n_estrellas + 1)   # nucleo + estrellas mas internas
     vc = np.sqrt(G * M_dentro * R**2 / (R**2 + eps**2) ** 1.5)
 
     # direccion tangencial (antihoraria para sentido=+1) + pequena dispersion
@@ -79,8 +73,8 @@ def crear_galaxia(n_estrellas, masa_nucleo=0.8, masa_disco=0.2, escala_disco=1.0
 
 
 def crear_colision(n_por_galaxia=2000, separacion=12.0, parametro_impacto=3.0,
-                   frac_parabolica=0.6, razon_masa=1.0,
-                   incl1=0.0, incl2=np.radians(60), angulo1=0.0, angulo2=0.0,
+                frac_parabolica=0.6, razon_masa=1.0,
+                incl1=0.0, incl2=np.radians(60), angulo1=0.0, angulo2=0.0,
                    sentido1=+1, sentido2=+1, eps=0.05, semilla=None, **kwargs):
     """
     Dos galaxias que se acercan en el plano x-y, en el sistema del centro de masa.
@@ -99,8 +93,10 @@ def crear_colision(n_por_galaxia=2000, separacion=12.0, parametro_impacto=3.0,
     rng = np.random.default_rng(semilla)
     n_est2 = n_por_galaxia
 
-    p1, v1, m1 = crear_galaxia(n_por_galaxia, eps=eps, sentido=sentido1, rng=rng, **kwargs)
-    p2, v2, m2 = crear_galaxia(n_est2, eps=eps, sentido=sentido2, rng=rng, **kwargs)
+    p1, v1, m1 = crear_galaxia(
+        n_por_galaxia, eps=eps, sentido=sentido1, rng=rng, **kwargs)
+    p2, v2, m2 = crear_galaxia(
+        n_est2, eps=eps, sentido=sentido2, rng=rng, **kwargs)
     m2 = m2 * razon_masa                       # galaxia 2 mas (o menos) masiva
 
     R1, R2 = matriz_rotacion(incl1, angulo1), matriz_rotacion(incl2, angulo2)
