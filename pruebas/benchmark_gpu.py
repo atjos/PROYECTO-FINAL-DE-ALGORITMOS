@@ -1,7 +1,7 @@
-from condiciones import crear_colision
-import gpu_cuda as gpu
-import cpu_paralelo as cpu
-import fisica
+from src.condiciones import crear_colision
+from src import gpu_cuda as gpu
+from src import cpu_paralelo as cpu
+from src import fisica
 import matplotlib.pyplot as plt
 import matplotlib
 from numba import cuda
@@ -20,13 +20,12 @@ os.makedirs(os.path.join(RAIZ, "benchmarks"), exist_ok=True)
 
 RAPIDO = "--rapido" in sys.argv
 EPS = 0.05
-N_CORRECCION = 1000                  # N de la prueba de correccion de las fuerzas
-# galaxias de la prueba de conservacion de energia (float32)
+N_CORRECCION = 1000
 N_POR_GAL_ENERGIA = 1000
-PASOS_ENERGIA = 6000                 # 6000 pasos de dt = 0.005  ->  t = 30
+PASOS_ENERGIA = 6000
 N_TPB = 16000
 LISTA_TPB = [64, 128, 256, 512]
-N_CPU_MAX = 16000                    # hasta aqui se compara con la CPU paralela
+N_CPU_MAX = 16000
 if RAPIDO:
     LISTA_N, REPS, PASOS_ENERGIA = [1000, 4000, 16000], 3, 1000
 else:
@@ -52,7 +51,6 @@ def medir(f, reps=None):
 def medir_gpu(f, reps=None):
     reps = REPS if reps is None else reps
     f()
-    # calentamiento (compila en la primera llamada)
     cuda.synchronize()
     mejor = np.inf
     for _ in range(reps):
@@ -77,7 +75,7 @@ def lanzador(N, tpb=gpu.TPB_POR_DEFECTO):
 
 def prueba_correccion():
     print(
-        f"== 1) Correccion de las fuerzas: GPU (float32) vs NumPy (float64), N = {N_CORRECCION} ==")
+        f"--- 1. Validación de fuerzas: GPU (float32) vs NumPy (float64), N = {N_CORRECCION} ---")
     pos, masas = datos(N_CORRECCION)
     ref = fisica.aceleraciones(pos, masas, EPS)
     a = gpu.aceleraciones(pos, masas, EPS)
@@ -88,7 +86,7 @@ def prueba_correccion():
     U_ref = fisica.energia(pos, np.zeros_like(pos), masas, EPS)[2]
     print(f"  Energia potencial: NumPy {U_ref:.6f}   GPU {r['E'][0]:.6f}")
 
-    print("== 2) Dinamica: 400 pasos de la colision (N = 302), GPU vs referencia CPU float64 ==")
+    print("--- 2. Dinámica orbital: 400 pasos de colisión (N = 302), GPU vs CPU float64 ---")
     p, v, m, _, _ = crear_colision(n_por_galaxia=150, semilla=1, eps=EPS)
     r_cpu = cpu.simular(p, v, m, EPS, 0.005, 400, cada=100, guardar_pos=False)
     r_gpu = gpu.simular(p, v, m, EPS, 0.005, 400, cada=100, guardar_pos=False)
@@ -101,7 +99,7 @@ def prueba_correccion():
 def prueba_energia_float32():
     n = 2 * N_POR_GAL_ENERGIA + 2
     print(
-        f"== 3) Conservacion de energia en float32: colision con N = {n}, {PASOS_ENERGIA} pasos de dt = 0.005 ==")
+        f"--- 3. Conservación de energía en float32: N = {n}, {PASOS_ENERGIA} pasos ---")
     p, v, m, _, _ = crear_colision(
         n_por_galaxia=N_POR_GAL_ENERGIA, semilla=1, eps=EPS)
     t0 = time.perf_counter()
@@ -120,7 +118,7 @@ def prueba_rendimiento():
     dev = cuda.get_current_device().name
     dev = dev.decode() if isinstance(dev, bytes) else dev
     print(
-        f"== 4) Tiempo de UN calculo de fuerzas vs N  (GPU: {dev}, bloque = {gpu.TPB_POR_DEFECTO}) ==")
+        f"--- 4. Tiempo de cálculo vs N (GPU: {dev}, TPB = {gpu.TPB_POR_DEFECTO}) ---")
     print(f"  {'N':>6} | {'CPU paralelo (s)':>16} | {'GPU (s)':>9} | {'speedup GPU/CPU':>15} | {'Ginteracciones/s':>16}")
     filas, t_g, t_c = [], {}, {}
     for N in LISTA_N:
@@ -137,7 +135,7 @@ def prueba_rendimiento():
         print(
             f"  {N:6d} | {txt_c} | {t_g[N]:9.5f} | {txt_s} | {N * N / t_g[N] / 1e9:16.1f}")
 
-    print(f"== 5) Efecto del tamano de bloque (N = {N_TPB}) ==")
+    print(f"--- 5. Sensibilidad al tamaño de bloque (N = {N_TPB}) ---")
     t_tpb = {}
     for tpb in LISTA_TPB:
         t_tpb[tpb] = medir_gpu(lanzador(N_TPB, tpb))
@@ -153,15 +151,15 @@ def prueba_rendimiento():
     ax[0].loglog(list(t_c), list(t_c.values()),
                 "o-", label="CPU paralela (Numba)")
     ax[0].loglog(LISTA_N, [t_g[N] for N in LISTA_N], "^-", label="GPU (CUDA)")
-    ax[0].set_xlabel("N")
-    ax[0].set_ylabel("tiempo por calculo de fuerzas (s)")
-    ax[0].set_title("Tiempo vs N")
+    ax[0].set_xlabel("Número de partículas (N)")
+    ax[0].set_ylabel("Tiempo por cálculo de fuerzas (s)")
+    ax[0].set_title("Tiempo de cálculo vs. N (GPU vs. CPU)")
     ax[0].legend()
     ax[0].grid(alpha=0.3, which="both")
     ax[1].bar([str(t) for t in LISTA_TPB], [t_tpb[t] for t in LISTA_TPB])
-    ax[1].set_xlabel("hilos por bloque")
-    ax[1].set_ylabel("tiempo (s)")
-    ax[1].set_title(f"Tamano de bloque (N = {N_TPB})")
+    ax[1].set_xlabel("Hilos por bloque (TPB)")
+    ax[1].set_ylabel("Tiempo de ejecución (s)")
+    ax[1].set_title(f"Sensibilidad al tamaño de bloque (N = {N_TPB})")
     plt.tight_layout()
     plt.savefig(os.path.join(RAIZ, "resultados", "benchmark_gpu.png"), dpi=130)
     print("  Guardado: resultados/benchmark_gpu.png y benchmarks/resultados_gpu.csv")

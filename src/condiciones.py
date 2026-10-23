@@ -32,27 +32,23 @@ def crear_galaxia(n_estrellas, masa_nucleo=0.8, masa_disco=0.2, escala_disco=1.0
     rng = np.random.default_rng() if rng is None else rng
     Rd = escala_disco
 
-    # --- 1. Radios: disco exponencial, Sigma ~ exp(-R/Rd)  <=>  R ~ Gamma(2, Rd) ---
     R = np.empty(0)
     while R.size < n_estrellas:
         candidatos = rng.gamma(shape=2.0, scale=Rd, size=2 * n_estrellas)
         candidatos = candidatos[(candidatos > r_min) & (candidatos < r_max)]
         R = np.concatenate([R, candidatos])
     R = R[:n_estrellas]
-    R.sort()                                   # ordenados de adentro hacia afuera
+    R.sort()
     phi = rng.uniform(0, 2 * np.pi, n_estrellas)
     z = rng.normal(0.0, altura * Rd, n_estrellas)
 
-    # --- 2. Posiciones ---
     x, y = R * np.cos(phi), R * np.sin(phi)
 
-    # --- 3. Velocidad circular: v_c^2 = G M(<R) R^2 / (R^2 + eps^2)^(3/2) ---
     m_estrella = masa_disco / n_estrellas
     M_dentro = masa_nucleo + m_estrella * \
-        np.arange(1, n_estrellas + 1)   # nucleo + estrellas mas internas
+        np.arange(1, n_estrellas + 1)
     vc = np.sqrt(G * M_dentro * R**2 / (R**2 + eps**2) ** 1.5)
 
-    # direccion tangencial (antihoraria para sentido=+1) + pequena dispersion
     vx = -sentido * vc * np.sin(phi)
     vy = sentido * vc * np.cos(phi)
     vz = np.zeros(n_estrellas)
@@ -61,12 +57,10 @@ def crear_galaxia(n_estrellas, masa_nucleo=0.8, masa_disco=0.2, escala_disco=1.0
     vy = vy + rng.normal(0, 1, n_estrellas) * sigma
     vz = vz + rng.normal(0, 1, n_estrellas) * sigma
 
-    # --- 4. Ensamblar (nucleo en el indice 0) ---
     pos = np.vstack([[0.0, 0.0, 0.0], np.column_stack([x, y, z])])
     vel = np.vstack([[0.0, 0.0, 0.0], np.column_stack([vx, vy, vz])])
     masas = np.concatenate([[masa_nucleo], np.full(n_estrellas, m_estrella)])
 
-    # --- 5. Llevar al sistema del centro de masa (el nucleo absorbe el pequeno desbalance) ---
     pos -= np.average(pos, axis=0, weights=masas)
     vel -= np.average(vel, axis=0, weights=masas)
     return pos, vel, masas
@@ -97,7 +91,7 @@ def crear_colision(n_por_galaxia=2000, separacion=12.0, parametro_impacto=3.0,
         n_por_galaxia, eps=eps, sentido=sentido1, rng=rng, **kwargs)
     p2, v2, m2 = crear_galaxia(
         n_est2, eps=eps, sentido=sentido2, rng=rng, **kwargs)
-    m2 = m2 * razon_masa                       # galaxia 2 mas (o menos) masiva
+    m2 = m2 * razon_masa
 
     R1, R2 = matriz_rotacion(incl1, angulo1), matriz_rotacion(incl2, angulo2)
     p1, v1 = p1 @ R1.T, v1 @ R1.T
@@ -107,10 +101,8 @@ def crear_colision(n_por_galaxia=2000, separacion=12.0, parametro_impacto=3.0,
     Mtot = M1 + M2
     v_rel = frac_parabolica * np.sqrt(2.0 * G * Mtot / separacion)
 
-    # posicion y velocidad relativas (galaxia 2 respecto a la 1); el movimiento es en -x
     r_rel = np.array([separacion, parametro_impacto, 0.0])
     u_rel = np.array([-v_rel, 0.0, 0.0])
-    # sistema del centro de masa
     p1 = p1 + (-M2 / Mtot) * r_rel
     p2 = p2 + (M1 / Mtot) * r_rel
     v1 = v1 + (-M2 / Mtot) * u_rel

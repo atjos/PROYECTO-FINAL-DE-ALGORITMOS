@@ -16,7 +16,7 @@ def suma_cuadrados(n):
     return total
 
 
-suma_cuadrados(10)  # la primera llamada compila
+suma_cuadrados(10)
 t0 = time.time()
 r = suma_cuadrados(100_000_000)
 print("Resultado:", r, "| Tiempo:", round(time.time() - t0, 3), "s")

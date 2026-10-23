@@ -1,4 +1,4 @@
-from condiciones import crear_colision
+from src.condiciones import crear_colision
 import numpy as np
 import sys
 import os
@@ -21,9 +21,6 @@ except ImportError:
 EPS = 0.05
 
 
-# =====================================================================================
-#  1. SIMULACION  (guarda posiciones Y velocidades de cada "foto")
-# =====================================================================================
 def elegir_backend(pedido):
     if pedido in ("auto", "gpu"):
         try:
@@ -106,9 +103,6 @@ def trayectoria(pos, vel, masas, dt, n_pasos, cada, backend):
     return P, V
 
 
-# =====================================================================================
-#  2. RENDER  (splatting aditivo + bloom + tone mapping)
-# =====================================================================================
 def desenfocar(img, sigma):
     if sigma <= 0:
         return img
@@ -125,10 +119,10 @@ def paleta(puntos, colores):
     return lambda t: np.stack([np.interp(t, xs, c[:, k]) for k in range(3)], -1)
 
 
-PAL_VEL = paleta(None, ["#2a3cff", "#3fa9ff", "#bfeaff",
-                "#fff1c9", "#ffb347", "#ff4d2e"])
-PAL_DEN = paleta(None, ["#1b1464", "#7a1fa2", "#e8467c", "#ffb36b", "#fffbe6"])
-COL_GAL = np.array([[0.30, 0.72, 1.00], [1.00, 0.55, 0.20]])
+PAL_VEL = paleta(None, ["#20407d", "#3a75a4", "#8ec1dc",
+                "#f2e2a8", "#e6883c", "#b8321e"])
+PAL_DEN = paleta(None, ["#0d131f", "#1e334a", "#4a779d", "#c49a45", "#fff3d6"])
+COL_GAL = np.array([[0.28, 0.65, 0.95], [0.95, 0.52, 0.18]])
 
 
 class Render:
@@ -138,28 +132,23 @@ class Render:
         self.W, self.H, self.modo = W, H, modo
         self.estela, self.giro, self.brillo = estela, giro, brillo
         self.dt_foto = dt_foto
-        # escala de efectos con la resolucion
         self.s = W / 1280.0
         self.idx_nuc = np.where(nucleo)[0]
         self.estrellas = ~nucleo
-        # velocidad de referencia (global, para que el color sea coherente en el tiempo)
         rapidez = np.linalg.norm(
             V[::max(1, self.F // 20)][:, self.estrellas], axis=2)
         self.vref = np.percentile(rapidez, 97)
-        # zoom suave: encuadra el 97 % de las estrellas y los nucleos
         anchos = np.empty(self.F)
         for f in range(self.F):
             r = np.linalg.norm(P[f][self.estrellas], axis=1)
             rn = np.linalg.norm(P[f][self.idx_nuc], axis=1).max()
             anchos[f] = max(np.percentile(r, 97), 1.3 * rn, 4.0) * \
-                1.1 * (W / H)   # cabe en el eje corto (alto)
+                1.1 * (W / H)
         k = max(3, self.F // 12)
         self.anchos = uniform_filter1d(
             anchos, k, mode="nearest") if uniform_filter1d else anchos
-        # exposicion automatica (EMA)
         self.ref_exp = None
 
-    # ---------------- camara
     def angulos(self, f):
         u = f / max(self.F - 1, 1)
         az = np.radians(-25 + self.giro * u)
@@ -186,12 +175,10 @@ class Render:
                                * w[ok], minlength=W * H) for c in range(3)]
         return np.stack(canales, -1).reshape(H, W, 3).astype(np.float32)
 
-    # ---------------- colores por particula
     def colores(self, f, ix, iy, prof, ancho):
         vel = self.V[f]
         if self.modo == "galaxia":
             col = COL_GAL[self.gal]
-            # un toque de variacion por velocidad para que no quede plano
             rap = np.clip(np.linalg.norm(vel, axis=1) /
                         self.vref, 0, 1.3)[:, None]
             col = col * (0.75 + 0.35 * rap)
@@ -205,14 +192,12 @@ class Render:
             t = np.log1p(
                 d) / np.log1p(np.percentile(d[ok], 99.5) + 1e-9) if ok.any() else d
             col = PAL_DEN(np.clip(t, 0, 1))
-        else:  # velocidad
+        else:
             col = PAL_VEL(np.clip(np.linalg.norm(
                 vel, axis=1) / self.vref, 0, 1))
-        # profundidad: lo cercano a la camara brilla un poco mas
         fz = np.clip(1.0 + 0.25 * prof / ancho, 0.6, 1.4)[:, None]
         return col * fz
 
-    # ---------------- un cuadro
     def frame(self, f):
         W, H, s = self.W, self.H, self.s
         az, el = self.angulos(f)
@@ -225,7 +210,6 @@ class Render:
 
         img = self.splat(ix[est], iy[est], col, base_w)
 
-        # estelas de las estrellas: posiciones pasadas con peso decreciente
         for k in range(1, self.estela + 1):
             if f - k < 0:
                 break
@@ -234,18 +218,15 @@ class Render:
             peso = base_w * 0.55 * np.exp(-k / max(self.estela / 2.5, 1e-6))
             img += self.splat(ik[est], jk[est], col, peso)
 
-        # bloom: nucleo + halo medio + halo ancho
-        img = img + 0.8 * desenfocar(img, 1.6 * s) + \
-            2.2 * desenfocar(img, 7 * s)
+        img = img + 0.6 * desenfocar(img, 1.5 * s) + \
+            1.4 * desenfocar(img, 6.0 * s)
 
-        # exposicion automatica suave
         lum = img.mean(-1)
         ref = np.percentile(lum, 99.6) + 1e-9
         self.ref_exp = ref if self.ref_exp is None else 0.9 * self.ref_exp + 0.1 * ref
         out = 1.0 - np.exp(-2.4 * img / self.ref_exp)
         out = out ** 0.8
 
-        # estelas largas de los nucleos (toda la historia, desvaneciendose)
         trazo = np.zeros((H, W, 3), np.float32)
         paso = max(1, f // 250)
         for g, gi in enumerate(self.idx_nuc):
@@ -259,17 +240,15 @@ class Render:
         trazo = np.clip(trazo + 0.6 * desenfocar(trazo, 1.5 * s), 0, 1) * 0.8
         out = 1.0 - (1.0 - out) * (1.0 - trazo)
 
-        # nucleos: punto brillante con halo
         nx, ny = ix[self.idx_nuc], iy[self.idx_nuc]
         n_col = np.ones((len(nx), 3), np.float32)
         capa = self.splat(nx, ny, n_col, np.ones(len(nx), np.float32))
-        s1, s2 = 2.2 * s, 9 * s
-        glow = desenfocar(capa, s1) * (2 * np.pi * s1 ** 2) + \
-            0.35 * desenfocar(capa, s2) * (2 * np.pi * s2 ** 2)
+        s1, s2 = 2.0 * s, 7.5 * s
+        glow = desenfocar(capa, s1) * (1.5 * np.pi * s1 ** 2) + \
+            0.25 * desenfocar(capa, s2) * (1.5 * np.pi * s2 ** 2)
         tinte = np.array([1.0, 0.97, 0.9], np.float32)
         out = 1.0 - (1.0 - out) * (1.0 - np.clip(glow, 0, 1) * tinte)
 
-        # fondo: casi negro con vineta
         yy, xx = np.mgrid[0:H, 0:W]
         vin = 1.0 - 0.35 * (((xx - W / 2) / (W / 2)) ** 2 +
                             ((yy - H / 2) / (H / 2)) ** 2) / 2
@@ -288,8 +267,8 @@ class Render:
             t = f * self.dt_foto
             d.text((14 * self.s, 10 * self.s),
                 f"t = {t:5.1f}", fill=(190, 200, 215), font=fuente)
-            modo = {"velocidad": "color: velocidad", "galaxia": "color: galaxia de origen",
-                    "densidad": "color: densidad"}[self.modo]
+            modo = {"velocidad": "Mapeo: velocidad orbital", "galaxia": "Mapeo: galaxia de origen",
+                    "densidad": "Mapeo: densidad superficial"}[self.modo]
             d.text((14 * self.s, 10 * self.s + 22 * self.s), f"N = {len(self.P[0])}   {modo}",
                 fill=(120, 130, 150), font=fuente)
             return np.asarray(im)
@@ -297,9 +276,6 @@ class Render:
             return img
 
 
-# =====================================================================================
-#  3. SALIDA
-# =====================================================================================
 class Escritor:
     def __init__(self, ruta, W, H, fps):
         self.W, self.H, self.fps = W, H, fps
@@ -333,9 +309,6 @@ class Escritor:
             self.gif.close()
 
 
-# =====================================================================================
-#  4. PROGRAMA PRINCIPAL
-# =====================================================================================
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -389,7 +362,6 @@ def main():
             a.color, a.estela, a.giro, a.brillo)
     F = len(P)
 
-    # imagen fija del tramo final (colas de marea), siempre
     png = a.salida + "_final.png"
     f_fin = int(F * 0.85)
     img = r.con_texto(r.frame(f_fin), f_fin)

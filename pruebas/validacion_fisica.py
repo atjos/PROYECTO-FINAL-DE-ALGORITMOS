@@ -1,5 +1,5 @@
-from fisica import simular, paso_leapfrog, aceleraciones, energia
-from condiciones import crear_galaxia, crear_colision
+from src.fisica import simular, paso_leapfrog, aceleraciones, energia
+from src.condiciones import crear_galaxia, crear_colision
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
@@ -13,23 +13,18 @@ matplotlib.use("Agg")
 os.makedirs(os.path.join(RAIZ, "resultados"), exist_ok=True)
 
 EPS = 0.05
-N_POR_GALAXIA = 150        # pequeno: la version serial es lenta
-# incluye el primer paso cercano (pericentro) de la colision
+N_POR_GALAXIA = 150
 T_FINAL = 30.0
 LISTA_DT = [0.02, 0.01, 0.005, 0.0025]
-# variacion relativa maxima de energia aceptable (1 %)
 CRITERIO = 0.01
 
 
-# ---------------------------------------------------------------- A
 def prueba_A_kepler_excentrica():
-    print("== A) Dos cuerpos en orbita excentrica (e = 0.6): orden de convergencia ==")
+    print("--- A. Órbita Kepleriana excéntrica (e = 0.6): convergencia de orden 2 ---")
     masas = np.array([1.0, 1.0])
-    a, e = 1.0, 0.6                                   # semieje mayor y excentricidad
+    a, e = 1.0, 0.6
     M = masas.sum()
-    # empezamos en el apocentro
     r_apo = a * (1 + e)
-    # velocidad relativa en el apocentro
     v_rel = np.sqrt(M * (1 - e) / (a * (1 + e)))
     pos = np.array([[r_apo / 2, 0, 0], [-r_apo / 2, 0, 0]])
     vel = np.array([[0, v_rel / 2, 0], [0, -v_rel / 2, 0]])
@@ -38,7 +33,7 @@ def prueba_A_kepler_excentrica():
     errores = []
     for dt in (0.004, 0.002, 0.001):
         n = int(round(periodo / dt))
-        dt_ajustado = periodo / n                     # un periodo exacto
+        dt_ajustado = periodo / n
         res = simular(pos, vel, masas, eps, dt_ajustado, n, cada=n)
         err = np.linalg.norm(res["pos_final"] - pos)
         errores.append(err)
@@ -48,9 +43,8 @@ def prueba_A_kepler_excentrica():
         f"  Razon entre errores al dividir dt entre 2: {razones[0]:.2f}, {razones[1]:.2f}  (esperado ~4 -> orden 2)")
 
 
-# ---------------------------------------------------------------- B
 def prueba_B_reversibilidad():
-    print("== B) Reversibilidad temporal del leapfrog ==")
+    print("--- B. Reversibilidad temporal del integrador Leapfrog ---")
     pos, vel, masas = crear_galaxia(
         N_POR_GALAXIA, eps=EPS, rng=np.random.default_rng(5))
     dt, n = 0.01, 500
@@ -58,7 +52,7 @@ def prueba_B_reversibilidad():
     p, v = pos.copy(), vel.copy()
     for _ in range(n):
         p, v, acc = paso_leapfrog(p, v, acc, masas, EPS, dt)
-    v = -v                                            # invertimos el tiempo
+    v = -v
     acc = aceleraciones(p, masas, EPS)
     for _ in range(n):
         p, v, acc = paso_leapfrog(p, v, acc, masas, EPS, dt)
@@ -66,10 +60,9 @@ def prueba_B_reversibilidad():
         f"  Diferencia maxima de posicion tras ir y volver: {np.abs(p - pos).max():.2e}  (debe ser ~1e-12 o menos)")
 
 
-# ---------------------------------------------------------------- C
 def prueba_C_colision_vs_dt():
     print(
-        f"== C) Colision completa (N = {2 * N_POR_GALAXIA + 2}) hasta t = {T_FINAL}: efecto de dt ==")
+        f"--- C. Colisión completa (N = {2 * N_POR_GALAXIA + 2}) hasta t = {T_FINAL}: efecto de dt ---")
     pos, vel, masas, gal, nuc = crear_colision(
         n_por_galaxia=N_POR_GALAXIA, semilla=1, eps=EPS)
     idx = np.where(nuc)[0]
@@ -100,16 +93,16 @@ def prueba_C_colision_vs_dt():
         ax[0].semilogy(r["t"], r["dE"] + 1e-12, label=f"dt = {dt}")
         ax[2].plot(r["t"], r["sep"], label=f"dt = {dt}")
     ax[0].axhline(CRITERIO, color="k", ls="--", lw=0.8)
-    ax[0].set_title("Error relativo de energia")
-    ax[0].set_xlabel("t")
+    ax[0].set_title("Error relativo de energía (|ΔE| / |E₀|)")
+    ax[0].set_xlabel("Tiempo (t)")
     ax[0].legend()
     ax[1].loglog(LISTA_DT, [resultados[dt]["dE"].max()
                 for dt in LISTA_DT], "o-")
     ax[1].axhline(CRITERIO, color="k", ls="--", lw=0.8)
-    ax[1].set_title("max |dE/E| vs dt")
-    ax[1].set_xlabel("dt")
-    ax[2].set_title("Distancia entre nucleos")
-    ax[2].set_xlabel("t")
+    ax[1].set_title("Error máximo de energía vs. paso (dt)")
+    ax[1].set_xlabel("Paso de tiempo (dt)")
+    ax[2].set_title("Separación internuclear vs. tiempo")
+    ax[2].set_xlabel("Tiempo (t)")
     ax[2].legend()
     plt.tight_layout()
     plt.savefig(os.path.join(RAIZ, "resultados", "validacion_dt.png"), dpi=130)

@@ -1,6 +1,6 @@
-from condiciones import crear_colision
-import cpu_paralelo as cpu
-import fisica
+from src.condiciones import crear_colision
+from src import cpu_paralelo as cpu
+from src import fisica
 import matplotlib.pyplot as plt
 import matplotlib
 import numba
@@ -44,7 +44,7 @@ def datos(N, semilla=0):
 
 
 def prueba_correccion():
-    print("== 1) Correccion: paralelo vs referencia NumPy (N = 1000) ==")
+    print("--- 1. Corrección numérica: paralelo vs referencia NumPy (N = 1000) ---")
     pos, masas = datos(1000)
     ref = fisica.aceleraciones(pos, masas, EPS)
     for nombre, f in (("numba 1 hilo", cpu.aceleraciones_numba_serial), ("numba paralelo", cpu.aceleraciones_numba)):
@@ -55,7 +55,7 @@ def prueba_correccion():
     E_nb = cpu.energia(pos, np.zeros_like(pos), masas, EPS)[2]
     print(f"  Energia potencial: NumPy {E_ref:.8f}  Numba {E_nb:.8f}")
 
-    print("== 2) Correccion dinamica: 400 pasos de la colision (N = 302) ==")
+    print("--- 2. Corrección dinámica: 400 pasos de colisión (N = 302) ---")
     p, v, m, _, _ = crear_colision(n_por_galaxia=150, semilla=1, eps=EPS)
     r_ref = fisica.simular(p, v, m, EPS, 0.005, 400, cada=100)
     r_nb = cpu.simular(p, v, m, EPS, 0.005, 400, cada=100)
@@ -67,7 +67,7 @@ def prueba_correccion():
 
 def prueba_rendimiento():
     print(
-        f"== 3) Tiempo de UN calculo de fuerzas vs N  (hilos disponibles: {MAX_HILOS}) ==")
+        f"--- 3. Tiempo de cálculo de fuerzas vs N (hilos disponibles: {MAX_HILOS}) ---")
     numba.set_num_threads(MAX_HILOS)
     filas, t_np, t_s, t_p = [], {}, {}, {}
     print(f"  {'N':>6} | {'NumPy (s)':>10} | {'Numba 1h (s)':>12} | {'Numba paralelo (s)':>18} | {'Mints/s paralelo':>16}")
@@ -85,7 +85,7 @@ def prueba_rendimiento():
         print(
             f"  {N:6d} | {txt_np} | {t_s[N]:12.4f} | {t_p[N]:18.4f} | {N * N / t_p[N] / 1e6:16.0f}")
 
-    print(f"== 4) Speedup vs numero de hilos (N = {N_HILOS}) ==")
+    print(f"--- 4. Escalabilidad y aceleración vs número de hilos (N = {N_HILOS}) ---")
     pos, masas = datos(N_HILOS)
     tiempos_h = {}
     for h in LISTA_HILOS:
@@ -116,17 +116,17 @@ def prueba_rendimiento():
                 for N in LISTA_N], "s-", label="Numba, 1 hilo")
     ax[0].loglog(LISTA_N, [t_p[N] for N in LISTA_N],
                 "^-", label=f"Numba, {MAX_HILOS} hilos")
-    ax[0].set_xlabel("N")
-    ax[0].set_ylabel("tiempo por calculo de fuerzas (s)")
-    ax[0].set_title("Tiempo vs N")
+    ax[0].set_xlabel("Número de partículas (N)")
+    ax[0].set_ylabel("Tiempo por cálculo de fuerzas (s)")
+    ax[0].set_title("Tiempo de cálculo vs. N")
     ax[0].legend()
     ax[0].grid(alpha=0.3, which="both")
     ax[1].plot(LISTA_HILOS, [base / tiempos_h[h]
             for h in LISTA_HILOS], "o-", label="medido")
     ax[1].plot(LISTA_HILOS, LISTA_HILOS, "k--", lw=0.8, label="ideal")
-    ax[1].set_xlabel("hilos")
-    ax[1].set_ylabel("speedup")
-    ax[1].set_title(f"Speedup vs hilos (N = {N_HILOS})")
+    ax[1].set_xlabel("Número de hilos")
+    ax[1].set_ylabel("Aceleración (speedup)")
+    ax[1].set_title(f"Escalabilidad multihilo (N = {N_HILOS})")
     ax[1].legend()
     ax[1].grid(alpha=0.3)
     plt.tight_layout()

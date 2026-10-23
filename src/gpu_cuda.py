@@ -13,7 +13,6 @@ def construir_kernels(tpb):
 
     @cuda.jit(fastmath=True)
     def k_acc(pos4, acc, n, eps2):
-        # tile en memoria compartida
         sh = cuda.shared.array((tpb, 4), dtype=float32)
         tx = cuda.threadIdx.x
         i = cuda.grid(1)
@@ -34,20 +33,18 @@ def construir_kernels(tpb):
         n_tiles = (n + tpb - 1) // tpb
         for tile in range(n_tiles):
             j = tile * tpb + tx
-            if j < n:                                        # cada hilo carga UNA particula del tile
+            if j < n:
                 sh[tx, 0] = pos4[j, 0]
                 sh[tx, 1] = pos4[j, 1]
                 sh[tx, 2] = pos4[j, 2]
                 sh[tx, 3] = pos4[j, 3]
-            else:                                            # relleno: masa 0 => no aporta fuerza
+            else:
                 sh[tx, 0] = cero
                 sh[tx, 1] = cero
                 sh[tx, 2] = cero
                 sh[tx, 3] = cero
-            # esperar a que el tile este completo
             cuda.syncthreads()
 
-            # interaccion con las tpb particulas del tile
             for k in range(tpb):
                 dx = sh[k, 0] - xi
                 dy = sh[k, 1] - yi
@@ -55,10 +52,9 @@ def construir_kernels(tpb):
                 r2 = dx * dx + dy * dy + dz * dz + eps2
                 inv_r = uno / math.sqrt(r2)
                 s = sh[k, 3] * inv_r * inv_r * inv_r
-                ax += dx * s                                 # si j == i: dx=dy=dz=0 -> aporta 0
+                ax += dx * s
                 ay += dy * s
                 az += dz * s
-            # no sobreescribir el tile antes de que todos terminen
             cuda.syncthreads()
 
         if i < n:
@@ -100,7 +96,7 @@ def construir_kernels(tpb):
                 sh[tx, 3] = cero
             cuda.syncthreads()
             for k in range(tpb):
-                if tile * tpb + k != i:                      # excluir la autointeraccion
+                if tile * tpb + k != i:
                     dx = sh[k, 0] - xi
                     dy = sh[k, 1] - yi
                     dz = sh[k, 2] - zi

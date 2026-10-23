@@ -1,5 +1,5 @@
-from fisica import simular, energia
-from condiciones import crear_galaxia, crear_colision
+from src.fisica import simular, energia
+from src.condiciones import crear_galaxia, crear_colision
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
@@ -14,7 +14,7 @@ EPS = 0.05
 
 
 def prueba_colision():
-    print("== Condiciones iniciales de la colision ==")
+    print("--- Condiciones iniciales de la colisión ---")
     pos, vel, masas, gal, nuc = crear_colision(
         n_por_galaxia=3000, semilla=1, eps=EPS)
     E, K, U = energia(pos, vel, masas, EPS) if len(
@@ -25,7 +25,7 @@ def prueba_colision():
 
     fig, ax = plt.subplots(1, 2, figsize=(12, 5), facecolor="black")
     colores = np.where(gal == 0, "#4fc3ff", "#ff9a3c")
-    for a, (i, j, tit) in zip(ax, [(0, 1, "vista x-y"), (0, 2, "vista x-z")]):
+    for a, (i, j, tit) in zip(ax, [(0, 1, "Plano orbital (x-y)"), (0, 2, "Perfil vertical (x-z)")]):
         a.set_facecolor("black")
         a.scatter(pos[~nuc, i], pos[~nuc, j],
                 s=1.5, c=colores[~nuc], alpha=0.7)
@@ -40,16 +40,15 @@ def prueba_colision():
 
 
 def prueba_estabilidad():
-    print("== Estabilidad de UNA galaxia aislada (N=600) ==")
+    print("--- Estabilidad de galaxia aislada (N = 600) ---")
     pos, vel, masas = crear_galaxia(600, eps=EPS, rng=np.random.default_rng(3))
-    # t = 10  (~1.6 vueltas a R = 1)
     dt, n_pasos = 0.005, 2000
     res = simular(pos, vel, masas, EPS, dt, n_pasos, cada=100)
     E = res["E"]
     print(
         f"  Variacion relativa max de E: {abs(E - E[0]).max() / abs(E[0]):.2e}")
 
-    def radios(p):                                   # distancia al nucleo (particula 0)
+    def radios(p):
         return np.linalg.norm(p[1:] - p[0], axis=1)
     r0, r1 = radios(res["pos"][0]), radios(res["pos"][-1])
     print(
@@ -58,7 +57,7 @@ def prueba_estabilidad():
         f"  Radio al 90% de las estrellas: inicial {np.percentile(r0, 90):.3f} -> final {np.percentile(r1, 90):.3f}")
 
     fig, ax = plt.subplots(1, 3, figsize=(15, 4.5), facecolor="black")
-    for a, k, tit in zip(ax[:2], (0, -1), ("t = 0", f"t = {res['t'][-1]:.1f}")):
+    for a, k, tit in zip(ax[:2], (0, -1), ("Configuración inicial (t = 0)", f"Evolución (t = {res['t'][-1]:.1f})")):
         a.set_facecolor("black")
         a.scatter(res["pos"][k][1:, 0], res["pos"][k]
                 [1:, 1], s=2, c="#4fc3ff", alpha=0.7)
@@ -70,9 +69,9 @@ def prueba_estabilidad():
         a.tick_params(colors="gray")
     ax[2].set_facecolor("black")
     ax[2].plot(res["t"], (E - E[0]) / abs(E[0]), c="#ff9a3c")
-    ax[2].set_title("Error relativo de energia", color="white")
+    ax[2].set_title("Conservación de energía: ΔE / |E₀|", color="white")
     ax[2].tick_params(colors="gray")
-    ax[2].set_xlabel("t", color="white")
+    ax[2].set_xlabel("Tiempo (t)", color="white")
     plt.tight_layout()
     plt.savefig(os.path.join(RAIZ, "resultados",
                 "estabilidad_galaxia.png"), dpi=130, facecolor="black")

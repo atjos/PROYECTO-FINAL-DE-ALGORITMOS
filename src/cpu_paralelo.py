@@ -8,7 +8,7 @@ def _aceleraciones(pos, masas, eps):
     n = pos.shape[0]
     eps2 = eps * eps
     acc = np.empty((n, 3))
-    for i in prange(n):                    # <- aqui se reparte el trabajo entre hilos
+    for i in prange(n):
         xi, yi, zi = pos[i, 0], pos[i, 1], pos[i, 2]
         ax = 0.0
         ay = 0.0
