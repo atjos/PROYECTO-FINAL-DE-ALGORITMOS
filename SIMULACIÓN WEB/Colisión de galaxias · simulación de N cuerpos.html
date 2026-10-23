@@ -12,29 +12,11 @@
         --bg: #02030a;
         --fg: #d6def0;
         --mut: #7f8aa8;
-        --pan: rgba(10, 14, 28, 0.66);
-        --bd: rgba(130, 160, 255, 0.24);
+        --pan: rgba(9, 13, 24, 0.92);
+        --bd: rgba(130, 160, 255, 0.2);
         --ac: #6ab7ff;
         color-scheme: dark;
         box-sizing: border-box;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root:not([data-theme="light"]) {
-          --bg: #02030a;
-          --fg: #d6def0;
-          --mut: #7f8aa8;
-          --pan: rgba(10, 14, 28, 0.66);
-          --bd: rgba(130, 160, 255, 0.24);
-          --ac: #6ab7ff;
-        }
-      }
-      :root[data-theme="dark"] {
-        --bg: #02030a;
-        --fg: #d6def0;
-        --mut: #7f8aa8;
-        --pan: rgba(10, 14, 28, 0.66);
-        --bd: rgba(130, 160, 255, 0.24);
-        --ac: #6ab7ff;
       }
       html,
       body {
@@ -61,9 +43,7 @@
         position: fixed;
         background: var(--pan);
         border: 1px solid var(--bd);
-        border-radius: 12px;
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
+        border-radius: 8px;
       }
       #hud {
         left: 12px;
@@ -141,6 +121,15 @@
       button:hover {
         border-color: var(--ac);
       }
+      button:active {
+        background: #18254c;
+      }
+      button:focus-visible,
+      #pn select:focus-visible,
+      #pn input:focus-visible {
+        outline: 2px solid var(--ac);
+        outline-offset: 1px;
+      }
       .ck {
         display: flex;
         gap: 6px;
@@ -173,7 +162,7 @@
   <body>
     <canvas id="c"></canvas>
     <div id="hud" class="box">
-      <h1>🌌 Colisión de galaxias</h1>
+      <h1>Colisión de galaxias</h1>
       <div id="st"></div>
       <canvas id="gr" width="440" height="112"></canvas>
     </div>
@@ -182,7 +171,7 @@
       <div class="body">
         <label>Escenario</label
         ><select id="pre">
-          <option value="col">Colisión (la de tu simulación)</option>
+          <option value="col">Colisión estándar (parámetros base)</option>
           <option value="ant">Antenas: colas de marea</option>
           <option value="fro">Impacto frontal</option>
           <option value="ret">Encuentro retrógrado</option>
@@ -467,7 +456,6 @@
       const mStar = mat(0.075, 0.9, 0.5),
         mNuc = mat(2.2, 0.95, 1.6),
         mBg = mat(1.1, 0.55, 0);
-      // fondo de estrellas lejanas
       {
         const m = 1400,
           p = new Float32Array(3 * m),
@@ -493,7 +481,6 @@
         pts.frustumCulled = false;
         scene.add(pts);
       }
-      // nucleos y estelas largas
       const nPos = new Float32Array(6),
         nCol = new Float32Array([0.75, 0.9, 1, 1, 0.8, 0.55]);
       const nG = new THREE.BufferGeometry();
@@ -523,7 +510,6 @@
         scene.add(l);
         trL.push(l);
       }
-      // estrellas
       let stars = null,
         col = null,
         sGeo = null;
@@ -546,7 +532,6 @@
         stars.frustumCulled = false;
         scene.add(stars);
       }
-      // paletas (LUT)
       function lut(stops) {
         const o = new Float32Array(768);
         for (let i = 0; i < 256; i++) {
@@ -567,11 +552,11 @@
         [1, 0.3, 0.18],
       ]);
       const PT = lut([
-        [0.2, 0.3, 0.7],
-        [0.35, 0.55, 1],
-        [0.8, 0.5, 1],
-        [1, 0.4, 0.7],
-        [1, 0.85, 0.6],
+        [0.15, 0.28, 0.65],
+        [0.22, 0.55, 0.95],
+        [0.45, 0.82, 0.85],
+        [0.92, 0.75, 0.42],
+        [1, 0.9, 0.7],
         [1, 1, 1],
       ]);
       const GC = [
@@ -618,7 +603,6 @@
         }
         sGeo.attributes.color.needsUpdate = true;
       }
-      // camara
       let th = 0.6,
         ph = 0.55,
         dist = 46,
@@ -681,7 +665,6 @@
         R.clear();
       }
       addEventListener("resize", resize);
-      // reinicio
       const hist = [];
       function reset() {
         build(+$("n").value, $("pre").value);
@@ -710,7 +693,6 @@
         $("pn").classList.add("min");
         $("tg").textContent = "+";
       }
-      // grafico
       const gr = $("gr").getContext("2d");
       function graf() {
         const W = 440,
@@ -731,9 +713,8 @@
         gr.stroke();
         gr.fillStyle = "#7f8aa8";
         gr.font = "18px system-ui";
-        gr.fillText("distancia entre núcleos", 8, 20);
+        gr.fillText("Distancia entre núcleos", 8, 20);
       }
-      // bucle
       let last = performance.now(),
         fps = 60,
         fr = 0;
