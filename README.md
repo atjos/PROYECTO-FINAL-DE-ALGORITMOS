@@ -4,11 +4,19 @@ Proyecto final de Cálculo Científico · Universidad Industrial de Santander ·
 
 Simulación gravitacional directa de N cuerpos (interacción de todos contra todos, O(N²)) de la colisión de dos galaxias de disco. Se implementa en tres versiones y se mide el speedup de cada una:
 
+<<<<<<< HEAD
 | Versión | Archivo | Herramienta | Precisión |
 |---|---|---|---|
 | Serial (referencia) | `src/fisica.py` | NumPy vectorizado | float64 |
 | CPU paralela | `src/cpu_paralelo.py` | Numba `njit(parallel=True)` + `prange` | float64 |
 | GPU | `src/gpu_cuda.py` | Numba CUDA (memoria compartida por *tiles*) | float32 |
+=======
+
+
+https://github.com/user-attachments/assets/97c4cb0d-c3e7-4cc7-8a1d-0b2473a091f9
+
+
+>>>>>>> f109c58e39c1e2529b45ba6f82195e9f6d9ade9c
 
 **Integrantes:** _(nombres del grupo)_
 
