@@ -34,7 +34,10 @@ E = K + U,    K = 0.5 * sum m_i |v_i|^2,    U = -0.5 * G * sum_{i} sum_{j != i} 
   - Velocidades circulares equilibradas con la masa encerrada y dispersión del 3% para estabilidad física.
   - Encuentro parabólico fuera de eje (distancia inicial d = 12, parámetro de impacto b = 3, inclinación relativa de 60°). Momento lineal total nulo (P = 0).
 - Frontera: Espacio abierto (sin condiciones de frontera periódicas).
-- Validación: Comprobada convergencia de orden 2 en órbita kepleriana excéntrica, reversibilidad temporal (|Delta r| ~ 10^-14) y conservación de energía (|Delta E / E_0| < 0.05%, cumpliendo el criterio del 1%).
+- Validación (`pruebas/validacion_fisica.py` y `serial.py`):
+  - Convergencia de orden 2 en órbita kepleriana excéntrica: al dividir dt entre 2 el error se reduce en un factor de ~3,95 a 3,98 (esperado: 4).
+  - Reversibilidad temporal: |Delta r| ~ 2 x 10^-13 tras ir y volver.
+  - Conservación de energía en la colisión completa (N = 302, dt = 0.005, t = 30): |Delta E / E_0| máximo de 4,8 x 10^-4 (0,05 %) con la semilla 1 de la validación y de 6,1 x 10^-4 (0,06 %) con la semilla 42 de `serial.py`. En ambos casos queda por debajo de 0,1 %, muy por debajo del criterio del 1 %. Con dt = 0.0025 el máximo fue 8,2 x 10^-4: en esta colisión el error de energía no decrece de forma monótona al reducir dt, por lo que dt = 0.005 es el valor base.
 
 ---
 
@@ -80,13 +83,21 @@ El cuello de botella computacional es el cálculo de interacciones gravitatorias
 
 - serial.py: Punto de entrada de simulación serial
 - paralelo.py: Punto de entrada de simulación paralela (CPU / GPU)
-- medir.py: Script maestro de benchmarking (genera CSVs y figuras)
+- medir.py: Script maestro; regenera todos los CSV, tablas y figuras (ver sección 5)
 - requirements.txt: Dependencias del proyecto
 - README.md: Documentación completa e instrucciones
 - src/: Módulos del modelo (fisica.py, cpu_paralelo.py, gpu_cuda.py, condiciones.py)
 - pruebas/: Scripts de validación física, benchmarks y renderizado
+  - test_entorno.py: comprueba que Numba y CUDA funcionan en el entorno
+  - prueba_serial.py: prueba rápida de la versión serial
+  - prueba_condiciones.py: condiciones iniciales y estabilidad de una galaxia aislada
+  - validacion_fisica.py: orden del integrador, reversibilidad y efecto de dt
+  - benchmark_cpu.py / benchmark_gpu.py: mediciones de tiempo y verificación serial vs paralelo
+  - analizar_cpu.py / baselines_cpu.py / resumen_repeticiones.py: tablas y gráficas derivadas de los CSV
+  - visualizar.py: render de la colision (imagen final y video)
 - benchmarks/: Datos crudos en CSV de las mediciones de rendimiento
 - resultados/: Gráficas generadas, tablas consolidadas y diagnósticos
+- SIMULACIÓN WEB/: versión interactiva en el navegador (HTML autocontenido)
 
 ---
 
@@ -103,25 +114,47 @@ conda activate nbody-gpu
 - Versión paralela en GPU:
   python paralelo.py --backend gpu --n 4000 --pasos 1000
 
-### B. Medición de desempeño y generación de CSVs (Script medir.py)
-- Medición completa (CPU + GPU + Análisis de Amdahl):
-  python medir.py --all
-- Medición exclusiva de CPU (3 corridas con pausas térmicas):
-  python medir.py --cpu
-- Medición exclusiva de GPU:
-  python medir.py --gpu
-- Prueba rápida (para verificar ejecución sin esperas prolongadas):
-  python medir.py --all --rapido
-- Reanalizar CSVs existentes:
-  python medir.py --analizar
-- Speedup frente a cada referencia (NumPy, Numba 1 hilo, Numba paralelo):
-  python pruebas/baselines_cpu.py
+`paralelo.py` hace un calentamiento antes de cronometrar (compilación JIT en CPU, arranque de CUDA en GPU) con un problema mínimo y reporta su duración aparte; el tiempo de la simulación no incluye la compilación. Ese tiempo sí incluye los registros periódicos de energía y momentos. Las mediciones formales de speedup están en `medir.py` (sección B), no en estos tiempos.
 
-### C. Validación física y visualización
-- Validación de integrador (convergencia de orden 2 y dt):
-  python pruebas/validacion_fisica.py
-- Generar video/animación de la colisión (MP4/GIF):
-  python pruebas/visualizar.py --backend gpu --n 4000 --pasos 6000
+### B. Regenerar todo con medir.py
+
+`medir.py` es el punto único para reproducir los CSV, las tablas y las figuras. Al terminar imprime un resumen con `[OK]` o `[FALLO]` por paso.
+
+| Comando | Qué hace |
+|---|---|
+| `python medir.py --all` | Todo: CPU, GPU, tablas y figuras (incluye el video) |
+| `python medir.py --all --rapido` | Lo mismo con tamaños reducidos; sirve para comprobar que todo corre. Las mediciones van a `benchmarks/rapido/` y `resultados/rapido/`, así que no tocan los resultados publicados |
+| `python medir.py --cpu` | Mediciones de CPU (4 corridas con pausa de 20 s para enfriar) y reanálisis de tablas |
+| `python medir.py --gpu` | Mediciones de GPU (requiere CUDA) y reanálisis de tablas |
+| `python medir.py --analizar` | Solo reanaliza los CSV existentes: speedup, eficiencia, Amdahl y tablas |
+| `python medir.py --figuras` | Figuras de física y de la colisión, incluido el video |
+| `python medir.py --figuras --sin-video` | Igual, sin renderizar el video (mucho más rápido) |
+
+Opciones de `--cpu`: `--corridas N` y `--pausa SEGUNDOS`.
+
+Antes de medir (`--cpu`, `--gpu`, `--all`), `medir.py` compara las versiones instaladas con las de `requirements.txt` y muestra un aviso si no coinciden, para que ninguna medición quede hecha con versiones distintas de las documentadas. El aviso no detiene la ejecución.
+
+### C. Qué comando genera cada archivo de resultados
+
+Cada fila se puede ejecutar por separado (columna "Script") o, más cómodo, con `medir.py`.
+
+| Archivo | Script | Con medir.py |
+|---|---|---|
+| `benchmarks/resultados_cpu_*_c*.csv`, `benchmarks/verificacion_cpu.csv`, `resultados/benchmark_cpu.png` (figura de la última corrida), `resultados/hardware.txt` | `python pruebas/benchmark_cpu.py` | `--cpu` |
+| `benchmarks/resultados_gpu.csv`, `benchmarks/verificacion_gpu.csv`, `resultados/benchmark_gpu.png`, `resultados/hardware_gpu.txt` | `python pruebas/benchmark_gpu.py` (solo la verificación: `--solo-verificacion`) | `--gpu` |
+| `resultados/analisis_cpu.png` (speedup y eficiencia con Amdahl), `resultados/tabla_speedup_cpu.csv` | `python pruebas/analizar_cpu.py` | `--analizar` |
+| `resultados/tabla_baselines_cpu.csv` (speedup frente a cada referencia) | `python pruebas/baselines_cpu.py` | `--analizar` |
+| `resultados/tabla_repeticiones.csv` | `python pruebas/resumen_repeticiones.py` | `--analizar` |
+| `resultados/condiciones_iniciales.png`, `resultados/estabilidad_galaxia.png` | `python pruebas/prueba_condiciones.py` | `--figuras` |
+| `resultados/validacion_dt.png` (orden 2, reversibilidad, efecto de dt) | `python pruebas/validacion_fisica.py` (tarda unos minutos) | `--figuras` |
+| `resultados/colision_final.png`, `resultados/colision.mp4` | `python pruebas/visualizar.py --backend gpu --n 4000 --pasos 6000` (con `--rapido` para una prueba corta) | `--figuras` |
+
+Notas:
+- `visualizar.py` usa la GPU si hay CUDA (`--backend auto`); con `--backend cpu` o `numpy` corre sin GPU, más lento. Para guardar MP4 necesita ffmpeg; sin él, genera un GIF si está `imageio`.
+- Los scripts de `pruebas/` se pueden ejecutar desde cualquier carpeta.
+- Cada ejecución de `--cpu` escribe un lote nuevo de CSV (`resultados_cpu_<fecha>_c<k>.csv`). Al terminar todas las corridas, los CSV de sesiones anteriores se mueven (no se borran) a `benchmarks/archivo/<fecha>/`, de modo que `benchmarks/` contiene siempre un solo lote y el análisis, que lee todos los `resultados_cpu*.csv` de esa carpeta, no mezcla mediciones de sesiones distintas. Si una ejecución falla a medio camino, los datos anteriores siguen en su lugar.
+- Las pruebas con `--rapido` nunca sobrescriben los resultados publicados: escriben en `benchmarks/rapido/` y `resultados/rapido/`, y el análisis las ignora.
+- Las simulaciones sueltas y la comprobación del entorno: `python pruebas/test_entorno.py` y `python pruebas/prueba_serial.py`.
 
 ---
 
@@ -157,7 +190,7 @@ Frente a `serial.py` la versión paralela es unas 85 veces más rápida (N = 200
 ### Protocolo de medición (repeticiones y dispersión)
 
 - Todos los tiempos se miden con `time.perf_counter` y la primera llamada (compilación JIT) se descarta.
-- Una **corrida** es una ejecución completa e independiente de `benchmark_cpu.py`; se hicieron 4 (`resultados_cpu.csv` y `_c1`, `_c2`, `_c3`, con pausas de enfriamiento). Una **repetición** es una medición dentro de una corrida. La columna `n_corridas` de `tabla_speedup_cpu.csv` cuenta corridas, no repeticiones.
+- Una **corrida** es una ejecución completa e independiente de `benchmark_cpu.py`; se hicieron 4 con pausas de enfriamiento. Las cuatro publicadas están en `benchmarks/` como `resultados_cpu.csv` y `resultados_cpu_20261030_005902_c1.csv` a `_c3.csv`; una sesión nueva (`python medir.py --cpu`) produce también 4, siempre con el formato `resultados_cpu_<fecha>_c1.csv` a `_c4.csv`. Una **repetición** es una medición dentro de una corrida. La columna `n_corridas` de `tabla_speedup_cpu.csv` cuenta corridas, no repeticiones.
 - Se reporta la mediana de cada corrida, luego la mediana entre corridas y el rango mínimo-máximo entre corridas (`analizar_cpu.py`).
 
 | Bloque | Repeticiones por corrida | Corridas | Muestras por configuración |

@@ -2,14 +2,17 @@
 Benchmark de CPU (v3): NumPy vs Numba (1 hilo) vs Numba paralelo.
 
 Uso (desde la raiz del proyecto, o desde cualquier carpeta):
-    python pruebas/benchmark_cpu.py                 # 3 corridas completas (por defecto)
+    python pruebas/benchmark_cpu.py                 # 4 corridas completas (por defecto)
     python pruebas/benchmark_cpu.py --corridas 5    # otro numero de corridas
     python pruebas/benchmark_cpu.py --pausa 30      # segundos de descanso entre corridas (def. 20)
-    python pruebas/benchmark_cpu.py --rapido        # prueba corta, solo para ver que corre
+    python pruebas/benchmark_cpu.py --rapido        # prueba corta; escribe en benchmarks/rapido/ y resultados/rapido/
 
 CADA corrida escribe su PROPIO archivo, con fecha y numero de corrida:
     benchmarks/resultados_cpu_AAAAMMDD_HHMMSS_c1.csv, ..._c2.csv, ...
-(no se sobrescribe nada). Luego agrupalas con:  python pruebas/analizar_cpu.py
+Al terminar TODAS las corridas, los resultados_cpu*.csv anteriores se MUEVEN (no se borran) a
+benchmarks/archivo/<fecha>/, de modo que benchmarks/ contiene siempre un solo lote y el analisis
+(python pruebas/analizar_cpu.py) no mezcla mediciones de sesiones distintas.
+Con --rapido nada de lo anterior se toca: todo va a las subcarpetas rapido/.
 
 Otras salidas:
     benchmarks/verificacion_cpu.csv    error serial vs paralelo para varios N (se hace una vez)
@@ -20,8 +23,10 @@ Cada tiempo se reporta como MEDIANA de las repeticiones, con su dispersion (IQR 
 La primera llamada (compilacion JIT) se descarta siempre.
 """
 import csv
+import glob
 import os
 import platform
+import shutil
 import sys
 import time
 
@@ -40,11 +45,14 @@ from src import cpu_paralelo as cpu     # noqa: E402
 from src import fisica                  # noqa: E402
 from src.condiciones import crear_colision  # noqa: E402
 
-os.makedirs(os.path.join(RAIZ, "resultados"), exist_ok=True)
-os.makedirs(os.path.join(RAIZ, "benchmarks"), exist_ok=True)
-
 VERSION = "benchmark_cpu v3 (un CSV por corrida)"
 RAPIDO = "--rapido" in sys.argv
+
+# La prueba rapida NUNCA escribe sobre los resultados publicados: va a subcarpetas rapido/.
+DIR_BENCH = os.path.join(RAIZ, "benchmarks", "rapido") if RAPIDO else os.path.join(RAIZ, "benchmarks")
+DIR_RES = os.path.join(RAIZ, "resultados", "rapido") if RAPIDO else os.path.join(RAIZ, "resultados")
+os.makedirs(DIR_RES, exist_ok=True)
+os.makedirs(DIR_BENCH, exist_ok=True)
 
 
 def _arg(nombre, defecto, tipo=int):
@@ -57,7 +65,7 @@ def _arg(nombre, defecto, tipo=int):
     return defecto
 
 
-N_CORRIDAS = _arg("--corridas", 1 if RAPIDO else 3)
+N_CORRIDAS = _arg("--corridas", 1 if RAPIDO else 4)
 PAUSA_S = _arg("--pausa", 0 if RAPIDO else 20, float)
 SELLO = time.strftime("%Y%m%d_%H%M%S")      # identifica este lote de corridas
 EPS = 0.05
@@ -188,6 +196,22 @@ def info_hardware():
 # ----------------------------------------------------------------------------
 # 1 y 2. Verificacion serial vs paralelo
 # ----------------------------------------------------------------------------
+def archivar_lotes_previos(nuevos):
+    """Mueve a benchmarks/archivo/<SELLO>/ los resultados_cpu*.csv que NO son de esta sesion.
+    Se llama solo cuando todas las corridas terminaron bien: si algo falla antes, los datos
+    anteriores siguen donde estaban. Mueve, nunca borra."""
+    previos = [r for r in sorted(glob.glob(os.path.join(DIR_BENCH, "resultados_cpu*.csv")))
+               if os.path.abspath(r) not in {os.path.abspath(n) for n in nuevos}]
+    if not previos:
+        return
+    destino = os.path.join(DIR_BENCH, "archivo", SELLO)
+    os.makedirs(destino, exist_ok=True)
+    for r in previos:
+        shutil.move(r, os.path.join(destino, os.path.basename(r)))
+    print(f"\n  {len(previos)} CSV de sesiones anteriores movidos a {os.path.relpath(destino, RAIZ)}/"
+          " (benchmarks/ queda solo con este lote)")
+
+
 def prueba_correccion():
     print(f"--- 1. Verificacion de aceleraciones vs referencia NumPy (tolerancia {TOL:.0e}) ---")
     filas = []
@@ -202,7 +226,7 @@ def prueba_correccion():
             ok = err < TOL
             filas.append((N, nombre, err, ok))
             print(f"  {N:6d} | {nombre:>15} | {err:14.2e} | {'PASA' if ok else 'NO PASA'}")
-    with open(os.path.join(RAIZ, "benchmarks", "verificacion_cpu.csv"), "w", newline="") as f:
+    with open(os.path.join(DIR_BENCH, "verificacion_cpu.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["N", "implementacion", "error_rel_max", "pasa_tolerancia"])
         w.writerows(filas)
@@ -347,26 +371,31 @@ def prueba_rendimiento(corrida, ruta_csv):
     ax[2].set_ylim(0, 1.1)
     ax[2].set_title("Eficiencia paralela")
     plt.tight_layout()
-    plt.savefig(os.path.join(RAIZ, "resultados", "benchmark_cpu.png"), dpi=130)
-    print(f"  Guardado: resultados/benchmark_cpu.png y {os.path.relpath(ruta_csv, RAIZ)}")
+    plt.savefig(os.path.join(DIR_RES, "benchmark_cpu.png"), dpi=130)
+    print(f"  Guardado: {os.path.relpath(os.path.join(DIR_RES, 'benchmark_cpu.png'), RAIZ)} y {os.path.relpath(ruta_csv, RAIZ)}")
 
 
 if __name__ == "__main__":
     hw = info_hardware()
     print(VERSION)
     print("\n".join(hw) + "\n")
-    with open(os.path.join(RAIZ, "resultados", "hardware.txt"), "w", encoding="utf-8") as f:
+    with open(os.path.join(DIR_RES, "hardware.txt"), "w", encoding="utf-8") as f:
         f.write("\n".join(hw) + "\n")
     prueba_correccion()
     generados = []
     for k in range(1, N_CORRIDAS + 1):
-        ruta = os.path.join(RAIZ, "benchmarks", f"resultados_cpu_{SELLO}_c{k}.csv")
+        ruta = os.path.join(DIR_BENCH, f"resultados_cpu_{SELLO}_c{k}.csv")
         prueba_rendimiento(k, ruta)
         generados.append(ruta)
         if k < N_CORRIDAS and PAUSA_S > 0:
             print(f"\n  (pausa de {PAUSA_S:.0f} s para que la CPU se enfrie antes de la siguiente corrida)\n")
             time.sleep(PAUSA_S)
+    if not RAPIDO:
+        archivar_lotes_previos(generados)
     print("\n=== ARCHIVOS GENERADOS ===")
     for r in generados:
         print("  ", os.path.relpath(r, RAIZ), "OK" if os.path.exists(r) else "NO SE CREO")
-    print("Ahora ejecuta:  python pruebas/analizar_cpu.py")
+    if RAPIDO:
+        print("Prueba rapida: los resultados publicados no se tocaron (todo quedo en las carpetas rapido/).")
+    else:
+        print("Ahora ejecuta:  python pruebas/analizar_cpu.py")

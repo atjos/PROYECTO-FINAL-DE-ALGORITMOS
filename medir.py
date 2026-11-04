@@ -1,22 +1,38 @@
 """
+medir.py - Script maestro: regenera TODOS los CSV, tablas y figuras del proyecto.
+
 Uso:
-    python medir.py --cpu          # Ejecuta los experimentos de CPU (3 corridas por defecto)
-    python medir.py --gpu          # Ejecuta los experimentos de GPU (si CUDA está disponible)
-    python medir.py --all          # Ejecuta CPU y GPU sucesivamente
-    python medir.py --analizar     # Analiza los CSV generados y calcula Speedup y Amdahl
-    python medir.py --rapido       # Modo de prueba rápida con tamaños reducidos
+    python medir.py --all              # CPU + GPU + tablas + figuras (todo, con video)
+    python medir.py --all --rapido     # lo mismo con tamaños reducidos; las mediciones van a
+                                       # benchmarks/rapido/ y resultados/rapido/ (no tocan los resultados publicados)
+    python medir.py --cpu              # solo mediciones de CPU (y reanaliza las tablas)
+    python medir.py --gpu              # solo mediciones de GPU (si hay CUDA; y reanaliza las tablas)
+    python medir.py --analizar         # reanaliza los CSV existentes: speedup, Amdahl y tablas
+    python medir.py --figuras          # figuras de fisica y colision (condiciones, validacion, video)
+    python medir.py --figuras --sin-video   # igual, pero sin renderizar el video (mucho mas rapido)
+
+Que genera cada paso (ver tambien la tabla "figura -> comando" del README):
+    --cpu       benchmarks/resultados_cpu_*_c*.csv, benchmarks/verificacion_cpu.csv,
+                resultados/benchmark_cpu.png, resultados/hardware.txt
+    --gpu       benchmarks/resultados_gpu.csv, benchmarks/verificacion_gpu.csv,
+                resultados/benchmark_gpu.png, resultados/hardware_gpu.txt
+    --analizar  resultados/analisis_cpu.png, tabla_speedup_cpu.csv,
+                tabla_baselines_cpu.csv, tabla_repeticiones.csv
+    --figuras   resultados/condiciones_iniciales.png, estabilidad_galaxia.png,
+                validacion_dt.png, colision_final.png, colision.mp4
 """
 
 import sys
 import os
+import re
 import argparse
 import subprocess
+from importlib import metadata
 
 RAIZ = os.path.dirname(os.path.abspath(__file__))
-BENCHMARKS_DIR = os.path.join(RAIZ, "benchmarks")
 PRUEBAS_DIR = os.path.join(RAIZ, "pruebas")
 
-# Resolver rutas para scripts delegados (soporta si están en pruebas/ o benchmarks/)
+
 def _buscar_script(nombre):
     for sub in ["pruebas", "benchmarks", "."]:
         ruta = os.path.join(RAIZ, sub, nombre)
@@ -24,101 +40,172 @@ def _buscar_script(nombre):
             return ruta
     return None
 
+
 def ejecutar_comando(comando, descripcion):
     print("\n" + "=" * 70)
     print(f" >> INICIANDO: {descripcion}")
     print(f" >> COMANDO:   {' '.join(comando)}")
     print("=" * 70 + "\n", flush=True)
-    res = subprocess.run(comando, cwd=RAIZ)
+    # PYTHONPATH con la raiz del proyecto: los scripts de pruebas/ hacen "from src import ..."
+    entorno = dict(os.environ)
+    entorno["PYTHONPATH"] = RAIZ + os.pathsep + entorno.get("PYTHONPATH", "")
+    res = subprocess.run(comando, cwd=RAIZ, env=entorno)
     if res.returncode != 0:
-        print(f"\n[ERROR] Ocurrió un fallo al ejecutar: {descripcion} (código {res.returncode})", file=sys.stderr)
+        print(f"\n[ERROR] Fallo al ejecutar: {descripcion} (codigo {res.returncode})", file=sys.stderr)
         return False
     return True
 
-def medir_cpu(rapido=False, corridas=3, pausa=20):
-    script = _buscar_script("benchmark_cpu.py")
-    if not script:
-        sys.exit("Error: No se encontró 'benchmark_cpu.py'.")
-    
-    cmd = [sys.executable, script]
-    if rapido:
-        cmd.append("--rapido")
-    else:
-        cmd.extend(["--corridas", str(corridas), "--pausa", str(pausa)])
-    
-    return ejecutar_comando(cmd, "Experimentos de CPU (Numba Serial vs Numba Paralelo)")
+
+def _script(nombre, args=(), descripcion=None):
+    ruta = _buscar_script(nombre)
+    if not ruta:
+        print(f"[ERROR] No se encontro '{nombre}'.", file=sys.stderr)
+        return False
+    return ejecutar_comando([sys.executable, ruta, *args], descripcion or nombre)
+
+
+# ---------------------------------------------------------------------------
+# Comprobacion del entorno
+# ---------------------------------------------------------------------------
+def _version_instalada(paquete):
+    for nombre in (paquete, paquete.replace("-", "_")):
+        try:
+            return metadata.version(nombre)
+        except metadata.PackageNotFoundError:
+            continue
+    return None
+
+
+def comprobar_entorno():
+    """Compara las versiones instaladas con las fijadas en requirements.txt y AVISA de las diferencias.
+    No detiene la medicion: el aviso queda en pantalla para que se corrija antes de reportar resultados
+    (las versiones usadas en cada medicion tambien las guardan resultados/hardware*.txt)."""
+    ruta = os.path.join(RAIZ, "requirements.txt")
+    if not os.path.isfile(ruta):
+        return True
+    distintas = []
+    with open(ruta, encoding="utf-8") as f:
+        for linea in f:
+            m = re.match(r"\s*([A-Za-z0-9_.\-]+)\s*==\s*([^\s#]+)", linea)
+            if not m:
+                continue
+            paquete, pedida = m.groups()
+            instalada = _version_instalada(paquete)
+            if instalada != pedida:
+                distintas.append((paquete, pedida, instalada or "no instalado"))
+    if distintas:
+        print("\n" + "!" * 70)
+        print(" [AVISO] Las versiones instaladas no coinciden con requirements.txt:")
+        for paquete, pedida, instalada in distintas:
+            print(f"    {paquete:<14} requirements.txt: {pedida:<10} instalada: {instalada}")
+        print(" Las mediciones quedarian hechas con otras versiones que las documentadas en el README.")
+        print(" Activa el entorno indicado (conda activate nbody-gpu) o actualiza README y requirements.txt.")
+        print("!" * 70 + "\n", flush=True)
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Mediciones
+# ---------------------------------------------------------------------------
+def medir_cpu(rapido=False, corridas=4, pausa=20):
+    args = ["--rapido"] if rapido else ["--corridas", str(corridas), "--pausa", str(pausa)]
+    return _script("benchmark_cpu.py", args, "Experimentos de CPU (Numba serial vs Numba paralelo)")
+
 
 def medir_gpu(rapido=False):
-    # Verificar si CUDA está disponible antes de lanzar
     try:
         from numba import cuda
         if not cuda.is_available():
-            print("[AVISO] CUDA no está disponible en este entorno. Omitiendo benchmark de GPU.", file=sys.stderr)
+            print("[AVISO] CUDA no esta disponible en este entorno. Se omite el benchmark de GPU.", file=sys.stderr)
             return False
     except ImportError:
-        print("[AVISO] Numba CUDA no está instalado. Omitiendo benchmark de GPU.", file=sys.stderr)
+        print("[AVISO] Numba CUDA no esta instalado. Se omite el benchmark de GPU.", file=sys.stderr)
         return False
+    return _script("benchmark_gpu.py", ["--rapido"] if rapido else [],
+                   "Experimentos de GPU (kernel CUDA con tiling vs CPU)")
 
-    script = _buscar_script("benchmark_gpu.py")
-    if not script:
-        sys.exit("Error: No se encontró 'benchmark_gpu.py'.")
-    
-    cmd = [sys.executable, script]
-    if rapido:
-        cmd.append("--rapido")
-    
-    return ejecutar_comando(cmd, "Experimentos de GPU (CUDA Tiling Kernel vs CPU)")
 
-def analizar_cpu():
-    script = _buscar_script("analizar_cpu.py")
-    if not script:
-        sys.exit("Error: No se encontró 'analizar_cpu.py'.")
-    
-    cmd = [sys.executable, script]
-    return ejecutar_comando(cmd, "Análisis de Speedup, Eficiencia y Ajuste de Amdahl")
+# ---------------------------------------------------------------------------
+# Tablas y figuras derivadas
+# ---------------------------------------------------------------------------
+def analizar():
+    """Todo lo que se calcula a partir de los CSV de benchmarks/."""
+    pasos = [
+        ("analizar_cpu.py", "Speedup, eficiencia y ajuste de Amdahl (analisis_cpu.png, tabla_speedup_cpu.csv)"),
+        ("baselines_cpu.py", "Speedup frente a cada referencia (tabla_baselines_cpu.csv)"),
+        ("resumen_repeticiones.py", "Repeticiones por configuracion (tabla_repeticiones.csv)"),
+    ]
+    return [_script(n, (), d) for n, d in pasos]
+
+
+def figuras(rapido=False, con_video=True):
+    """Figuras de fisica y de la colision (no dependen de los benchmarks)."""
+    resultados = [
+        _script("prueba_condiciones.py", (),
+                "Condiciones iniciales y estabilidad de la galaxia (condiciones_iniciales.png, estabilidad_galaxia.png)"),
+        _script("validacion_fisica.py", (),
+                "Validacion fisica: orden 2, reversibilidad y energia (validacion_dt.png)"),
+    ]
+    if con_video:
+        args = ["--rapido"] if rapido else []
+        resultados.append(_script("visualizar.py", args,
+                                  "Render de la colision (colision_final.png, colision.mp4)"))
+    else:
+        print("\n[INFO] Se omite el render del video (--sin-video): colision_final.png y colision.mp4 no se regeneran.")
+    return resultados
+
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Script maestro de medición de desempeño y generación de CSVs.",
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    parser.add_argument("--cpu", action="store_true", help="Ejecutar mediciones de CPU")
-    parser.add_argument("--gpu", action="store_true", help="Ejecutar mediciones de GPU")
-    parser.add_argument("--all", action="store_true", help="Ejecutar todas las mediciones (CPU + GPU + Análisis)")
-    parser.add_argument("--analizar", action="store_true", help="Ejecutar solo el análisis de resultados existentes")
-    parser.add_argument("--rapido", action="store_true", help="Ejecución reducida para verificación rápida")
-    parser.add_argument("--corridas", type=int, default=3, help="Número de corridas para CPU (default: 3)")
-    parser.add_argument("--pausa", type=float, default=20.0, help="Pausa en segundos entre corridas CPU para enfriamiento (default: 20)")
-
+        description="Script maestro de medicion: regenera CSV, tablas y figuras.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__)
+    parser.add_argument("--cpu", action="store_true", help="Mediciones de CPU (y reanalisis de tablas)")
+    parser.add_argument("--gpu", action="store_true", help="Mediciones de GPU (y reanalisis de tablas)")
+    parser.add_argument("--all", action="store_true", help="CPU + GPU + tablas + figuras")
+    parser.add_argument("--analizar", action="store_true", help="Reanalizar los CSV existentes (speedup, Amdahl, tablas)")
+    parser.add_argument("--figuras", action="store_true", help="Figuras de fisica y de la colision")
+    parser.add_argument("--sin-video", action="store_true", help="Con --figuras o --all: no renderiza el video")
+    parser.add_argument("--rapido", action="store_true", help="Ejecucion reducida para verificar que todo corre")
+    parser.add_argument("--corridas", type=int, default=4, help="Corridas de CPU (default: 4)")
+    parser.add_argument("--pausa", type=float, default=20.0, help="Pausa entre corridas de CPU, en s (default: 20)")
     args = parser.parse_args()
 
-    # Si se corre sin argumentos, mostrar ayuda o por defecto correr --all
     if len(sys.argv) == 1:
         parser.print_help()
         print("\nEjemplo sugerido: python medir.py --all --rapido")
-        return
+        return 0
 
-    exito = True
+    resultados = {}          # paso -> True/False
+    hubo_mediciones = False
 
-    if args.all:
-        exito_cpu = medir_cpu(rapido=args.rapido, corridas=args.corridas, pausa=args.pausa)
-        if exito_cpu:
-            analizar_cpu()
-        medir_gpu(rapido=args.rapido)
-    else:
-        if args.cpu:
-            exito_cpu = medir_cpu(rapido=args.rapido, corridas=args.corridas, pausa=args.pausa)
-            if exito_cpu:
-                analizar_cpu()
-        if args.gpu:
-            medir_gpu(rapido=args.rapido)
-        if args.analizar:
-            analizar_cpu()
+    if args.all or args.cpu or args.gpu:
+        comprobar_entorno()
+
+    if args.all or args.cpu:
+        resultados["mediciones CPU"] = medir_cpu(args.rapido, args.corridas, args.pausa)
+        hubo_mediciones = True
+    if args.all or args.gpu:
+        resultados["mediciones GPU"] = medir_gpu(args.rapido)
+        hubo_mediciones = True
+    if args.all or args.analizar or hubo_mediciones:
+        for nombre, ok in zip(("analisis de speedup/Amdahl", "tabla de referencias", "tabla de repeticiones"),
+                              analizar()):
+            resultados[nombre] = ok
+    if args.all or args.figuras:
+        for nombre, ok in zip(("condiciones iniciales", "validacion fisica", "render de la colision"),
+                              figuras(args.rapido, not args.sin_video)):
+            resultados[nombre] = ok
 
     print("\n" + "=" * 70)
-    print(" >> PROCESO DE MEDICIÓN FINALIZADO.")
-    print(" >> Resultados guardados en 'benchmarks/' y 'resultados/'.")
+    print(" >> RESUMEN")
+    for paso, ok in resultados.items():
+        print(f"    [{'OK' if ok else 'FALLO'}] {paso}")
+    print(" >> Datos en 'benchmarks/'; tablas y figuras en 'resultados/'.")
     print("=" * 70 + "\n")
+    return 0 if all(resultados.values()) else 1
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

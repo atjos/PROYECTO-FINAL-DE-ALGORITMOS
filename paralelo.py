@@ -9,6 +9,9 @@ Uso:
     python paralelo.py --backend cpu --hilos 6   # Ejecuta en CPU fijando 6 hilos
     python paralelo.py --backend gpu       # Ejecuta en GPU CUDA (si está disponible)
     python paralelo.py --n 1000 --pasos 1000  # Configura tamaño de problema y pasos
+
+Antes de cronometrar se hace un calentamiento (compilacion JIT y arranque de la GPU) con un problema
+minimo; su duracion se reporta aparte y NO entra en el tiempo de la simulacion.
 """
 
 import sys
@@ -69,29 +72,42 @@ def main():
     print("=" * 65)
 
     # 1. Crear condiciones iniciales
-    print("\n[1/3] Generando condiciones iniciales de colisión...")
+    print("\n[1/4] Generando condiciones iniciales de colisión...")
     pos, vel, masas, gal, nuc = crear_colision(n_por_galaxia=args.n, eps=args.eps, semilla=42)
     n_total = len(masas)
     print(f"      Partículas totales: {n_total}")
 
-    # 2. Ejecutar simulación
-    print(f"\n[2/3] Integrando {args.pasos} pasos temporales...")
+    # 2. Calentamiento, FUERA del cronometro. La compilacion JIT (y el arranque del contexto CUDA)
+    #    depende de los tipos de los argumentos, no del tamaño: 64 cuerpos y 2 pasos bastan.
+    print("\n[2/4] Calentamiento (compilación JIT / arranque de la GPU; no cuenta en el tiempo)...")
+    simular = gpu.simular if backend == "gpu" else cpu.simular
+    k = min(n_total, 64)
+    t0 = time.perf_counter()
+    simular(pos[:k], vel[:k], masas[:k], args.eps, args.dt, 2, cada=1, guardar_pos=False)
+    if backend == "gpu":
+        cuda.synchronize()
+    t_calentamiento = time.perf_counter() - t0
+    print(f"      Calentamiento: {t_calentamiento:.2f} s")
+
+    # 3. Ejecutar simulación (tiempo medido sin compilación)
+    print(f"\n[3/4] Integrando {args.pasos} pasos temporales...")
     t0 = time.perf_counter()
     if backend == "gpu":
         res = gpu.simular(pos, vel, masas, args.eps, args.dt, args.pasos, cada=max(1, args.pasos // 10), guardar_pos=False)
     else:
         res = cpu.simular(pos, vel, masas, args.eps, args.dt, args.pasos, cada=max(1, args.pasos // 10), guardar_pos=False)
-    tiempo_total = time.perf_counter() - t0
+    tiempo_total = time.perf_counter() - t0   # simular() termina con cuda.synchronize() en GPU
 
-    # 3. Métricas
+    # 4. Métricas
     dE = np.abs(res["E"] - res["E"][0]) / np.abs(res["E"][0])
     p_max = np.linalg.norm(res["P"], axis=1).max()
     L0 = np.linalg.norm(res["L"][0])
     L_fin = np.linalg.norm(res["L"][-1])
     dL = np.abs(L_fin - L0) / L0
 
-    print("\n[3/3] Métricas de conservación y rendimiento:")
-    print(f"      - Tiempo total de cómputo:  {tiempo_total:.3f} s")
+    print("\n[4/4] Métricas de conservación y rendimiento:")
+    print(f"      - Calentamiento (JIT/GPU):  {t_calentamiento:.3f} s  (no incluido en los tiempos siguientes)")
+    print(f"      - Tiempo total de cómputo:  {tiempo_total:.3f} s  (incluye los registros de energía y diagnósticos)")
     print(f"      - Tiempo por paso:          {tiempo_total / args.pasos * 1e3:.2f} ms")
     print(f"      - Rendimiento interacciones:{n_total * n_total / (tiempo_total / args.pasos) / 1e6:.1f} M-Interacciones/s")
     print(f"      - Error relativo máx. |ΔE|: {dE.max():.2e}  ({'CUMPLE < 1%' if dE.max() < 0.01 else 'REVISAR'})")

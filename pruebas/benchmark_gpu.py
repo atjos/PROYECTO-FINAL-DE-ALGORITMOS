@@ -61,8 +61,6 @@ from src.condiciones import crear_colision  # noqa: E402
 # Con N pequeno hay pocos bloques para los SM de la GPU: el aviso es cierto pero esperado.
 warnings.filterwarnings("ignore", message=".*under-utilization.*")
 
-os.makedirs(os.path.join(RAIZ, "resultados"), exist_ok=True)
-os.makedirs(os.path.join(RAIZ, "benchmarks"), exist_ok=True)
 
 RAPIDO = "--rapido" in sys.argv
 EPS = 0.05
@@ -77,7 +75,12 @@ LISTA_N_VERIF = [250, 1000, 2000, 4000, 8000, 16000]
 # asi que se espera un error relativo del orden de 1e-7 a 1e-6; 1e-5 deja margen sin ocultar errores reales.
 TOL_GPU = 1e-5
 TOL_ENERGIA = 0.01      # criterio del proyecto: |dE/E| < 1 %
-RUTA_VERIF = os.path.join(RAIZ, "benchmarks", "verificacion_gpu.csv")
+# La prueba rapida NUNCA escribe sobre los resultados publicados: va a subcarpetas rapido/.
+DIR_BENCH = os.path.join(RAIZ, "benchmarks", "rapido") if RAPIDO else os.path.join(RAIZ, "benchmarks")
+DIR_RES = os.path.join(RAIZ, "resultados", "rapido") if RAPIDO else os.path.join(RAIZ, "resultados")
+os.makedirs(DIR_RES, exist_ok=True)
+os.makedirs(DIR_BENCH, exist_ok=True)
+RUTA_VERIF = os.path.join(DIR_BENCH, "verificacion_gpu.csv")
 LISTA_TPB = [64, 128, 256, 512]
 # el serial a N mayor tarda demasiado; la CPU se mide solo hasta aqui
 N_CPU_MAX = 16000
@@ -443,7 +446,7 @@ def prueba_rendimiento(dev):
             print(
                 f"  Coherencia OK: kernel de N = {N_TPB} difiere {dif:.0%} entre barrido principal y prueba de TPB.")
 
-    ruta = os.path.join(RAIZ, "benchmarks", "resultados_gpu.csv")
+    ruta = os.path.join(DIR_BENCH, "resultados_gpu.csv")
     with open(ruta, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["implementacion", "N", "hilos_o_tpb", "rep", "tiempo_s"])
@@ -517,7 +520,7 @@ def prueba_rendimiento(dev):
 
     fig.suptitle(f"Benchmark GPU: {dev}", y=1.0)
     plt.tight_layout()
-    plt.savefig(os.path.join(RAIZ, "resultados", "benchmark_gpu.png"), dpi=130)
+    plt.savefig(os.path.join(DIR_RES, "benchmark_gpu.png"), dpi=130)
     print("\n  Guardado: resultados/benchmark_gpu.png y benchmarks/resultados_gpu.csv")
 
 
@@ -527,7 +530,7 @@ if __name__ == "__main__":
             "CUDA no esta disponible en este entorno (revisa que este activo nbody-gpu).")
     nombre, hw = info_hardware_gpu()
     print("\n".join(hw) + "\n")
-    with open(os.path.join(RAIZ, "resultados", "hardware_gpu.txt"), "w", encoding="utf-8") as f:
+    with open(os.path.join(DIR_RES, "hardware_gpu.txt"), "w", encoding="utf-8") as f:
         f.write("\n".join(hw) + "\n")
     prueba_correccion()
     prueba_energia_float32()

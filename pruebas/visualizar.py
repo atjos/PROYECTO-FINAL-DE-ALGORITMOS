@@ -1,3 +1,6 @@
+import os
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))  # permite "from src import ..." desde cualquier carpeta
 from src.condiciones import crear_colision
 import numpy as np
 import sys
