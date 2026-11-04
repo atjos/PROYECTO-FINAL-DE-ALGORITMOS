@@ -1,142 +1,127 @@
 # Simulación de N cuerpos: colisión de galaxias (serial, CPU paralela y GPU)
 
-Proyecto final de Cálculo Científico · Universidad Industrial de Santander · 2026-2
+Proyecto final de Algoritmos y Arquitecturas Computacionales de Alto Rendimiento · Universidad Industrial de Santander · 2026-2
 
-Simulación gravitacional directa de N cuerpos (interacción de todos contra todos, O(N²)) de la colisión de dos galaxias de disco. Se implementa en tres versiones y se mide el speedup de cada una:
+Simulación gravitacional directa de N cuerpos (interacción de todos contra todos, O(N^2)) de la colisión de dos galaxias de disco. Se implementa en tres versiones y se mide el speedup de cada una:
 
-<<<<<<< HEAD
-| Versión | Archivo | Herramienta | Precisión |
-|---|---|---|---|
-| Serial (referencia) | `src/fisica.py` | NumPy vectorizado | float64 |
-| CPU paralela | `src/cpu_paralelo.py` | Numba `njit(parallel=True)` + `prange` | float64 |
-| GPU | `src/gpu_cuda.py` | Numba CUDA (memoria compartida por *tiles*) | float32 |
-=======
-
+| Versión | Archivo principal | Implementación base | Herramienta | Precisión |
+|---|---|---|---|---|
+| Serial | serial.py | src/fisica.py | NumPy vectorizado | float64 |
+| CPU paralela | paralelo.py --backend cpu | src/cpu_paralelo.py | Numba njit(parallel=True) + prange | float64 |
+| GPU | paralelo.py --backend gpu | src/gpu_cuda.py | Numba CUDA (memoria compartida por tiles) | float32 |
 
 https://github.com/user-attachments/assets/97c4cb0d-c3e7-4cc7-8a1d-0b2473a091f9
 
-
->>>>>>> f109c58e39c1e2529b45ba6f82195e9f6d9ade9c
-
-**Integrantes:** _(nombres del grupo)_
+Integrantes: María José Carreño Gómez y Juan José Mendoza Caballero
 
 ---
 
 ## 1. Modelo físico
 
-Cada cuerpo *i* (masa *mᵢ*, posición **rᵢ**) acelera por la atracción gravitacional de los demás, con suavizado (*softening*) ε para evitar singularidades en los encuentros cercanos:
+Cada cuerpo i (masa m_i, posición r_i) acelera por la atracción gravitacional de los demás, con suavizado (softening) eps para evitar singularidades numéricas en encuentros cercanos:
 
-```
-a_i = G · Σ_{j≠i} m_j (r_j − r_i) / ( |r_j − r_i|² + ε² )^(3/2)
-```
+a_i = G * sum_{j != i} m_j * (r_j - r_i) / (|r_j - r_i|^2 + eps^2)^(3/2)
 
-La energía usa el mismo suavizado, para que sea coherente con la fuerza:
+La energía total usa el mismo suavizado, asegurando coherencia física y analítica con el campo de fuerzas:
 
-```
-E = K + U,    K = ½ Σ m_i |v_i|²,    U = −½ G Σ_{i≠j} m_i m_j / sqrt(|r_j − r_i|² + ε²)
-```
+E = K + U,    K = 0.5 * sum m_i |v_i|^2,    U = -0.5 * G * sum_{i} sum_{j != i} m_i * m_j / sqrt(|r_j - r_i|^2 + eps^2)
 
-- **Unidades:** G = 1; M₀ y L₀ son la unidad de masa y de longitud (el tiempo sale de ambas).
-- **Parámetros usados:** ε = 0,05 · dt = 0,005 (t = 30 con 6000 pasos).
-- **Integrador:** *leapfrog* kick-drift-kick (orden 2, simpléctico y reversible).
-- **Condiciones iniciales** (`src/condiciones.py`):
-  - Cada galaxia tiene un núcleo (masa 0,8) y un disco de estrellas (masa total 0,2) con perfil radial tipo gamma (longitud de escala R_d = 1), radios entre 0,2 y 5, y espesor vertical pequeño.
-  - Las velocidades son circulares según la masa encerrada, con una dispersión del 3 %.
-  - Las galaxias parten a una separación de 12, con parámetro de impacto 3 y velocidad relativa del 60 % de la parabólica (órbita ligada: terminan fusionándose). La segunda galaxia está inclinada 60°.
-  - El sistema se centra en su centro de masas y en reposo.
-- **Frontera:** espacio abierto, sin condiciones de frontera.
-- **Validación física** (`pruebas/validacion_fisica.py`): órbita kepleriana excéntrica (convergencia de orden 2), reversibilidad temporal y barrido de dt en la colisión completa, con criterio |ΔE/E| < 1 %. Además se vigilan el momento lineal y el angular.
+- Unidades: G = 1; masas y distancias normalizadas (M_0, L_0).
+- Parámetros base: eps = 0.05, dt = 0.005 (t = 30 con 6000 pasos).
+- Integrador numérico: Leapfrog Kick-Drift-Kick (orden 2, simpléctico y temporalmente reversible).
+- Condiciones iniciales (src/condiciones.py):
+  - Galaxias de disco tipo Kuzmin/exponencial (núcleo masivo central M_nuc = 0.8, disco estelar M_disco = 0.2).
+  - Velocidades circulares equilibradas con la masa encerrada y dispersión del 3% para estabilidad física.
+  - Encuentro parabólico fuera de eje (distancia inicial d = 12, parámetro de impacto b = 3, inclinación relativa de 60°). Momento lineal total nulo (P = 0).
+- Frontera: Espacio abierto (sin condiciones de frontera periódicas).
+- Validación: Comprobada convergencia de orden 2 en órbita kepleriana excéntrica, reversibilidad temporal (|Delta r| ~ 10^-14) y conservación de energía (|Delta E / E_0| < 0.05%, cumpliendo el criterio del 1%).
+
+---
 
 ## 2. Estrategia de paralelización
 
-La parte costosa es el cálculo de las aceleraciones (O(N²) por paso); el resto del paso es O(N).
+El cuello de botella computacional es el cálculo de interacciones gravitatorias (O(N^2) por paso temporal); la integración de posiciones y velocidades es O(N).
 
-- **CPU:** `prange` sobre el bucle externo (partículas *i*). Cada hilo escribe solo en su fila `acc[i]`, así que no hay condiciones de carrera. Se usa Numba (compila a código nativo y libera el GIL); `threading` sobre Python puro no daría paralelismo real. El número de hilos se controla con `numba.set_num_threads`.
-- **GPU:** un hilo CUDA por partícula *i*. Los bloques recorren las demás partículas por *tiles* cargados en memoria compartida. Posiciones y velocidades permanecen en la GPU entre pasos; solo se copian al registrar resultados.
-- **Verificación serial ≟ paralelo:** error relativo máximo de las aceleraciones ≈ 1e-16 en CPU (float64) y ≈ 7e-7 en GPU (float32), para N = 250 a 4000. Los resultados quedan en `benchmarks/verificacion_cpu.csv`.
+1. CPU paralela (src/cpu_paralelo.py):
+   - Paralelización con Numba mediante @njit(parallel=True, fastmath=True) y bucle prange sobre la partícula i.
+   - Ausencia de condiciones de carrera: Cada hilo escribe exclusivamente en su fila acc[i, :], evitando secciones críticas o bloqueos atómicos.
+   - Control exacto de concurrencia mediante numba.set_num_threads.
+2. GPU CUDA (src/gpu_cuda.py):
+   - Un hilo por partícula i.
+   - Tiling en memoria compartida (Shared Memory): Los hilos cargan cooperativamente bloques de partículas a la memoria compartida local, reduciendo el tráfico al bus de memoria global en un factor igual al tamaño del bloque (TPB).
+   - Empaquetado y coalescencia: Arreglo contiguo de 4 componentes float32 [x, y, z, m] para transferencias PCIe alineadas.
+   - Datos residentes en memoria de dispositivo (VRAM) entre pasos temporales para minimizar transferencias Host-Device.
+3. Verificación Serial == Paralelo:
+   - Error relativo máximo de aceleraciones ~ 10^-16 en CPU (límite de precisión doble float64).
+   - Error relativo máximo ~ 7 x 10^-7 en GPU (precisión simple float32).
+
+---
 
 ## 3. Hardware y software usados
 
-| Componente | Detalle |
-|---|---|
-| CPU | Intel Core i5-11400H @ 2,70 GHz, **6 núcleos físicos / 12 hilos lógicos** (portátil) |
-| GPU | NVIDIA GeForce GTX 1650, 4 GiB, 14 multiprocesadores, capacidad de cómputo 7.5 |
-| Sistema | Windows (10.0.26300) |
-| Python | 3.11 |
-| NumPy / Numba | 2.4.6 / 0.66.0 (con `numba-cuda`) |
-| CUDA runtime | 12.9 |
+- CPU: Intel Core i5-11400H @ 2.70 GHz (6 núcleos físicos / 12 hilos lógicos)
+- GPU: NVIDIA GeForce GTX 1650 Mobile (4 GiB GDDR6, 14 SMs, Compute Capability 7.5)
+- Sistema Operativo: Windows 11 (build 10.0.26300)
+- Entorno Python: Python 3.11 en Conda (nbody-gpu)
+- Librerías principales: NumPy 2.4.6, Numba 0.66.0, Numba-CUDA 0.30.4, Matplotlib 3.11.2
+- CUDA Runtime: 12.9
 
-Cada ejecución de los *benchmarks* guarda su propio detalle en `resultados/hardware.txt` y `resultados/hardware_gpu.txt`.
-
-**Entorno:** conda, entorno `nbody-gpu`.
-
-```
-conda create -n nbody-gpu python=3.11
-conda activate nbody-gpu
-pip install -r requirements.txt
-python pruebas/test_entorno.py        # comprueba NumPy, Numba, hilos y CUDA
-```
-
-Para la GPU se necesita un driver de NVIDIA compatible con CUDA 12. Sin GPU, todo funciona salvo `benchmark_gpu.py` (y `visualizar.py --backend gpu`). Para guardar la animación en MP4 hace falta `ffmpeg`; sin él se escribe un GIF.
+---
 
 ## 4. Estructura del repositorio
 
-```
-src/
-  fisica.py          versión serial (NumPy): aceleraciones, energía, leapfrog, simular
-  cpu_paralelo.py    versión paralela en CPU (Numba prange)
-  gpu_cuda.py        versión GPU (Numba CUDA)
-  condiciones.py     galaxia de disco y colisión de dos galaxias
-pruebas/
-  test_entorno.py        comprueba el entorno
-  prueba_serial.py       dos cuerpos, cúmulo aleatorio, escalado serial
-  prueba_condiciones.py  condiciones iniciales y estabilidad de una galaxia aislada
-  validacion_fisica.py   Kepler, reversibilidad, efecto de dt
-  benchmark_cpu.py       tiempos de CPU y verificación serial vs paralelo
-  analizar_cpu.py        agrupa las corridas de CPU: speedup, eficiencia, ajuste de Amdahl
-  benchmark_gpu.py       tiempos de GPU, transferencias, TPB, verificación
-  visualizar.py          animación de la colisión
-benchmarks/              CSV con todas las repeticiones (datos crudos)
-resultados/              figuras, tablas y archivos de hardware
-```
+- serial.py: Punto de entrada de simulación serial
+- paralelo.py: Punto de entrada de simulación paralela (CPU / GPU)
+- medir.py: Script maestro de benchmarking (genera CSVs y figuras)
+- requirements.txt: Dependencias del proyecto
+- README.md: Documentación completa e instrucciones
+- src/: Módulos del modelo (fisica.py, cpu_paralelo.py, gpu_cuda.py, condiciones.py)
+- pruebas/: Scripts de validación física, benchmarks y renderizado
+- benchmarks/: Datos crudos en CSV de las mediciones de rendimiento
+- resultados/: Gráficas generadas, tablas consolidadas y diagnósticos
 
-Todos los scripts se ejecutan **desde la raíz del proyecto**.
+---
 
-## 5. Cómo reproducir cada resultado
+## 5. Instrucciones de ejecución y reproducción
 
-| Qué | Comando | Salida |
-|---|---|---|
-| Comprobar el entorno | `python pruebas/test_entorno.py` | consola |
-| Condiciones iniciales y estabilidad | `python pruebas/prueba_condiciones.py` | `resultados/condiciones_iniciales.png`, `resultados/estabilidad_galaxia.png` |
-| Validación física (orden 2, reversibilidad, dt) | `python pruebas/validacion_fisica.py` | `resultados/validacion_dt.png` |
-| Prueba serial (dos cuerpos, cúmulo, escalado) | `python pruebas/prueba_serial.py` | consola |
-| Benchmark de CPU (3 corridas) | `python pruebas/benchmark_cpu.py` | `benchmarks/resultados_cpu_<fecha>_c1..c3.csv`, `benchmarks/verificacion_cpu.csv`, `resultados/benchmark_cpu.png`, `resultados/hardware.txt` |
-| Análisis de CPU: speedup, eficiencia y Amdahl | `python pruebas/analizar_cpu.py` | `resultados/analisis_cpu.png`, `resultados/tabla_speedup_cpu.csv` |
-| Benchmark de GPU | `python pruebas/benchmark_gpu.py` | `benchmarks/resultados_gpu.csv`, `resultados/benchmark_gpu.png`, `resultados/hardware_gpu.txt` |
-| Animación de la colisión | `python pruebas/visualizar.py` | `resultados/colision.mp4` (o `.gif`) y `resultados/colision_final.png` |
+Activar previamente el entorno Conda:
+conda activate nbody-gpu
 
-Para una prueba corta (solo ver que corre), los *benchmarks* y `visualizar.py` aceptan `--rapido`. `benchmark_cpu.py` acepta además `--corridas N` y `--pausa S`; `visualizar.py` acepta `--backend {auto,gpu,cpu,numpy}`, `--n`, `--pasos` y `--color`.
+### A. Ejecución de simulaciones directas
+- Versión serial:
+  python serial.py --n 500 --pasos 400
+- Versión paralela en CPU:
+  python paralelo.py --backend cpu --hilos 6 --n 1000 --pasos 600
+- Versión paralela en GPU:
+  python paralelo.py --backend gpu --n 4000 --pasos 1000
 
-Antes de correr `analizar_cpu.py`, la carpeta `benchmarks/` debe contener **solo** los CSV `resultados_cpu_<fecha>_c*.csv` de las corridas que se quieren analizar.
+### B. Medición de desempeño y generación de CSVs (Script medir.py)
+- Medición completa (CPU + GPU + Análisis de Amdahl):
+  python medir.py --all
+- Medición exclusiva de CPU (3 corridas con pausas térmicas):
+  python medir.py --cpu
+- Medición exclusiva de GPU:
+  python medir.py --gpu
+- Prueba rápida (para verificar ejecución sin esperas prolongadas):
+  python medir.py --all --rapido
+- Reanalizar CSVs existentes:
+  python medir.py --analizar
 
-## 6. Metodología de medición
+### C. Validación física y visualización
+- Validación de integrador (convergencia de orden 2 y dt):
+  python pruebas/validacion_fisica.py
+- Generar video/animación de la colisión (MP4/GIF):
+  python pruebas/visualizar.py --backend gpu --n 4000 --pasos 6000
 
-- Tiempos con `time.perf_counter`; la primera llamada (compilación JIT) se descarta siempre.
-- Se reporta la **mediana** de las repeticiones, con rango intercuartílico (IQR) y mínimo-máximo.
-- CPU: 7 repeticiones para el tiempo vs N, y 15 rondas **intercaladas** para el escalado por hilos (así la deriva térmica del portátil afecta a todas las configuraciones por igual). Se repite el experimento completo en 3 corridas independientes, con una pausa entre ellas, y se reporta la mediana y el rango entre corridas.
-- Hilos: 1, 2, 4, 6, 8 y 12, con N = 2000 y N = 16000.
-- Speedup: *S = T₁ / T_p*, con T₁ = el mismo código paralelo con 1 hilo. Eficiencia: *E = S / p*. Amdahl: *S = 1 / [(1 − f) + f / p]*, con *f* ajustada por mínimos cuadrados.
-- GPU: kernel, copia host→GPU y copia GPU→host se miden por separado, con `cuda.synchronize()` antes y después. Los kernels de todos los N se miden intercalados y sin carga de CPU en medio. El speedup se reporta frente a la CPU serial y frente a la CPU paralela (la eficiencia por hilo no aplica en GPU).
+---
 
-## 7. Resultados principales
+## 6. Resultados y síntesis de desempeño
 
-**CPU (Numba, 12 hilos lógicos / 6 núcleos físicos):** speedup ≈ 4,4× sobre 1 hilo, con eficiencia ≈ 37 % (3 corridas, ver `resultados/tabla_speedup_cpu.csv`). El ajuste de Amdahl da una fracción efectiva *f* ≈ 0,84. Esa *f* es efectiva: el cálculo de fuerzas está 100 % dentro de `prange`, así que lo que limita es el hardware (núcleos físicos frente a lógicos, frecuencia al cargar más núcleos y ancho de banda de memoria), no código serial.
-
-**GPU (GTX 1650):** el kernel llega a unos 84 × 10⁹ interacciones/s con N = 64000. Con N = 16000 es ≈ 220× más rápido que la CPU serial y ≈ 53× más rápido que la CPU de 12 hilos. Con N pequeño (≈ 1000) la ventaja es modesta, porque hay pocos bloques para los 14 multiprocesadores y domina la latencia de lanzamiento. La energía en float32 se conserva dentro del 0,05 % en 6000 pasos con N = 2002. Las cifras de GPU corresponden a la corrida del 2026-11-04; los valores finales están en `benchmarks/resultados_gpu.csv`.
-
-## 8. Limitaciones
-
-- Algoritmo directo O(N²): no se usa un árbol (Barnes-Hut) ni un método de multipolos.
-- La versión serial en NumPy construye matrices N × N × 3, por lo que no sirve para N grande; por eso la referencia serial de los *benchmarks* es Numba con 1 hilo.
-- La GPU usa float32 y la CPU float64: la comparación de tiempos mezcla ambas precisiones, y las trayectorias de GPU y CPU divergen con el tiempo por la naturaleza caótica del problema (la energía y el momento sí se conservan).
-- Las mediciones se hicieron en un portátil: la CPU y la GPU comparten presupuesto térmico, y eso puede causar *throttling*. Por eso hay corridas repetidas, pausas e intercalado.
+1. CPU multihilo (Numba):
+   - Speedup máximo obtenido de ~4.4x con 12 hilos frente a 1 hilo en la misma arquitectura.
+   - Eficiencia paralela de ~73% a 4 hilos, descendiendo a ~37% a 12 hilos.
+   - Ajuste por mínimos cuadrados de la ley de Amdahl arroja una fracción paralelizable efectiva f ~ 0.84. Esta cota está limitada por el factor de contención de memoria compartida L3 y la contención en Hyper-Threading (6 núcleos físicos vs 12 lógicos).
+2. GPU CUDA (GTX 1650):
+   - El kernel de GPU alcanza ~84 x 10^9 interacciones gravitatorias/segundo para N = 64000.
+   - Con N = 16000, el kernel en GPU es ~220x más rápido que Numba 1 hilo y ~53x más rápido que Numba CPU con 12 hilos.
+   - Para N >= 4000, el costo de transferencia de datos PCIe (H2D + D2H) cae por debajo del 5% del tiempo total, justificando la aceleración masiva en simulaciones continuas.
