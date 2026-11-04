@@ -23,7 +23,12 @@ Cambios de la v3 respecto a la v2:
     - Hardware: nombre real de la CPU y nucleos fisicos (antes imprimia "Family 6 Model 141").
     - Se silencia el aviso de baja ocupacion de Numba (es esperable con N pequeno; ver el informe).
 
+Verificacion rapida (sin repetir el benchmark; no modifica resultados_gpu.csv):
+    python pruebas/benchmark_gpu.py --solo-verificacion
+
 Salidas:
+    benchmarks/verificacion_gpu.csv    error GPU (float32) vs CPU (float64): aceleraciones para varios N,
+                                       dinamica y conservacion de energia (prueba, N, magnitud, valor, tolerancia, pasa)
     benchmarks/resultados_gpu.csv      todas las repeticiones (implementacion, N, hilos_o_tpb, rep, tiempo_s)
     resultados/hardware_gpu.txt        GPU, CPU y versiones usadas
     resultados/benchmark_gpu.png       tiempo vs N, speedup, desglose de tiempo y sensibilidad a TPB
@@ -65,6 +70,14 @@ N_CORRECCION = 1000
 N_POR_GAL_ENERGIA = 1000
 PASOS_ENERGIA = 6000
 N_TPB = 16000
+# Verificacion GPU (float32) frente a la referencia en float64: varios N, resultado guardado en CSV.
+# Referencia = Numba serial en float64, que ya coincide con NumPy a ~1e-16 (benchmarks/verificacion_cpu.csv).
+LISTA_N_VERIF = [250, 1000, 2000, 4000, 8000, 16000]
+# Tolerancia de aceleraciones en float32: el epsilon de maquina es ~6e-8 y cada aceleracion suma N terminos,
+# asi que se espera un error relativo del orden de 1e-7 a 1e-6; 1e-5 deja margen sin ocultar errores reales.
+TOL_GPU = 1e-5
+TOL_ENERGIA = 0.01      # criterio del proyecto: |dE/E| < 1 %
+RUTA_VERIF = os.path.join(RAIZ, "benchmarks", "verificacion_gpu.csv")
 LISTA_TPB = [64, 128, 256, 512]
 # el serial a N mayor tarda demasiado; la CPU se mide solo hasta aqui
 N_CPU_MAX = 16000
@@ -239,28 +252,52 @@ def info_hardware_gpu():
 # ----------------------------------------------------------------------------
 # 1 a 3. Correccion
 # ----------------------------------------------------------------------------
+def _guardar_verificacion(filas, anexar):
+    """Escribe (o agrega a) benchmarks/verificacion_gpu.csv."""
+    modo = "a" if anexar else "w"
+    with open(RUTA_VERIF, modo, newline="") as f:
+        w = csv.writer(f)
+        if not anexar:
+            w.writerow(["prueba", "N", "magnitud", "valor", "tolerancia", "pasa_tolerancia"])
+        w.writerows(filas)
+
+
 def prueba_correccion():
-    print(
-        f"--- 1. Validación de fuerzas: GPU (float32) vs NumPy (float64), N = {N_CORRECCION} ---")
+    filas = []
+    print(f"--- 1. Verificación de aceleraciones: GPU (float32) vs Numba serial (float64), "
+          f"tolerancia {TOL_GPU:.0e} ---")
+    for N in LISTA_N_VERIF:
+        pos, masas = datos(N)
+        ref = cpu.aceleraciones_numba_serial(pos, masas, EPS)
+        a = gpu.aceleraciones(pos, masas, EPS)
+        err = float(np.abs(a - ref).max() / np.abs(ref).max())
+        ok = err < TOL_GPU
+        filas.append(("aceleraciones", N, "error_rel_max", err, TOL_GPU, ok))
+        print(f"  N = {N:6d}   error relativo maximo en a: {err:.2e}   {'OK' if ok else 'NO PASA'}")
+
     pos, masas = datos(N_CORRECCION)
-    ref = fisica.aceleraciones(pos, masas, EPS)
-    a = gpu.aceleraciones(pos, masas, EPS)
-    print(
-        f"  Error relativo maximo en a: {np.abs(a - ref).max() / np.abs(ref).max():.2e}  (float32: se espera ~1e-6 a 1e-5)")
     r = gpu.simular(pos, np.zeros_like(pos), masas,
                     EPS, 0.01, 0, guardar_pos=False)
     U_ref = fisica.energia(pos, np.zeros_like(pos), masas, EPS)[2]
-    print(f"  Energia potencial: NumPy {U_ref:.6f}   GPU {r['E'][0]:.6f}")
+    err_U = abs(r["E"][0] - U_ref) / abs(U_ref)
+    filas.append(("energia_potencial", N_CORRECCION, "error_rel", float(err_U), TOL_GPU, bool(err_U < TOL_GPU)))
+    print(f"  Energia potencial (N = {N_CORRECCION}): NumPy {U_ref:.6f}   GPU {r['E'][0]:.6f}   error relativo {err_U:.2e}")
 
     print("--- 2. Dinámica orbital: 400 pasos de colisión (N = 302), GPU vs CPU float64 ---")
     p, v, m, _, _ = crear_colision(n_por_galaxia=150, semilla=1, eps=EPS)
     r_cpu = cpu.simular(p, v, m, EPS, 0.005, 400, cada=100, guardar_pos=False)
     r_gpu = gpu.simular(p, v, m, EPS, 0.005, 400, cada=100, guardar_pos=False)
-    print(
-        f"  Diferencia maxima de posicion tras 400 pasos: {np.abs(r_cpu['pos_final'] - r_gpu['pos_final']).max():.2e}"
-        "  (el error de float32 se amplifica por la dinamica caotica)")
-    print(
-        f"  Variacion de energia: CPU {abs(r_cpu['E'][-1] / r_cpu['E'][0] - 1):.2e}   GPU {abs(r_gpu['E'][-1] / r_gpu['E'][0] - 1):.2e}")
+    dpos = float(np.abs(r_cpu["pos_final"] - r_gpu["pos_final"]).max())
+    dE_cpu = float(abs(r_cpu["E"][-1] / r_cpu["E"][0] - 1))
+    dE_gpu = float(abs(r_gpu["E"][-1] / r_gpu["E"][0] - 1))
+    # La diferencia de posiciones es informativa (el caos amplifica el error de float32): no tiene tolerancia.
+    filas.append(("dinamica_400_pasos", len(m), "dif_max_posicion", dpos, "", "informativo"))
+    filas.append(("dinamica_400_pasos", len(m), "variacion_energia_cpu", dE_cpu, TOL_ENERGIA, bool(dE_cpu < TOL_ENERGIA)))
+    filas.append(("dinamica_400_pasos", len(m), "variacion_energia_gpu", dE_gpu, TOL_ENERGIA, bool(dE_gpu < TOL_ENERGIA)))
+    print(f"  Diferencia maxima de posicion tras 400 pasos: {dpos:.2e}"
+          "  (el error de float32 se amplifica por la dinamica caotica)")
+    print(f"  Variacion de energia: CPU {dE_cpu:.2e}   GPU {dE_gpu:.2e}")
+    _guardar_verificacion(filas, anexar=False)
 
 
 def prueba_energia_float32():
@@ -275,10 +312,17 @@ def prueba_energia_float32():
     seg = time.perf_counter() - t0
     dE = np.abs(r["E"] - r["E"][0]) / abs(r["E"][0])
     L0, L1 = np.linalg.norm(r["L"][0]), np.linalg.norm(r["L"][-1])
-    print(f"  max |dE/E| = {dE.max():.2e}   cambio relativo |L| = {abs(L1 - L0) / L0:.1e}   "
-        f"|P| max = {np.linalg.norm(r['P'], axis=1).max():.1e}   ({seg:.1f} s en total)")
+    dL = float(abs(L1 - L0) / L0)
+    pmax = float(np.linalg.norm(r["P"], axis=1).max())
+    print(f"  max |dE/E| = {dE.max():.2e}   cambio relativo |L| = {dL:.1e}   "
+          f"|P| max = {pmax:.1e}   ({seg:.1f} s en total)")
     print(
-        f"  Criterio del 1 %: {'CUMPLE' if dE.max() < 0.01 else 'NO CUMPLE'}")
+        f"  Criterio del 1 %: {'CUMPLE' if dE.max() < TOL_ENERGIA else 'NO CUMPLE'}")
+    _guardar_verificacion([
+        (f"energia_float32_{PASOS_ENERGIA}_pasos", n, "max_dE_sobre_E", float(dE.max()), TOL_ENERGIA, bool(dE.max() < TOL_ENERGIA)),
+        (f"energia_float32_{PASOS_ENERGIA}_pasos", n, "cambio_rel_L", dL, "", "informativo"),
+        (f"energia_float32_{PASOS_ENERGIA}_pasos", n, "P_max", pmax, "", "informativo"),
+    ], anexar=True)
 
 
 # ----------------------------------------------------------------------------
@@ -487,4 +531,7 @@ if __name__ == "__main__":
         f.write("\n".join(hw) + "\n")
     prueba_correccion()
     prueba_energia_float32()
+    print("\n  Guardado: benchmarks/verificacion_gpu.csv")
+    if "--solo-verificacion" in sys.argv:
+        sys.exit(0)     # no toca resultados_gpu.csv ni las figuras
     prueba_rendimiento(nombre)
