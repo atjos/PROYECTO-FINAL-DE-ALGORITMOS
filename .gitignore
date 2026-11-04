@@ -1,0 +1,24 @@
+# Bytecode de Python (se regenera solo al ejecutar)
+__pycache__/
+*.py[cod]
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Configuración personal del editor
+.vscode/
+.idea/
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Cachés temporales
+.numba_cache/
+.pytest_cache/
