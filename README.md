@@ -42,27 +42,27 @@ https://github.com/user-attachments/assets/97c4cb0d-c3e7-4cc7-8a1d-0b2473a091f9
 
 Cada cuerpo $i$ (masa $m_i$, posición $\mathbf{r}_i$) acelera por la atracción gravitacional de los demás, con un suavizado (*softening*) $\varepsilon$ que evita singularidades numéricas en encuentros cercanos:
 
-$$
+```math
 \mathbf{a}_i \;=\; G \sum_{j \neq i} \frac{m_j \,\left(\mathbf{r}_j - \mathbf{r}_i\right)}{\left(\lVert \mathbf{r}_j - \mathbf{r}_i \rVert^{2} + \varepsilon^{2}\right)^{3/2}}
-$$
+```
 
 La energía total usa el mismo suavizado, lo que garantiza coherencia física y analítica con el campo de fuerzas:
 
-$$
+```math
 E = K + U, \qquad
 K = \frac{1}{2}\sum_i m_i \,\lVert \mathbf{v}_i \rVert^{2}, \qquad
 U = -\frac{G}{2} \sum_i \sum_{j \neq i} \frac{m_i\, m_j}{\sqrt{\lVert \mathbf{r}_j - \mathbf{r}_i \rVert^{2} + \varepsilon^{2}}}
-$$
+```
 
 ### Integrador: Leapfrog *Kick-Drift-Kick* (orden 2)
 
-$$
+```math
 \begin{aligned}
 \mathbf{v}_{n+1/2} &= \mathbf{v}_n + \tfrac{\Delta t}{2}\,\mathbf{a}(\mathbf{r}_n) \\
 \mathbf{r}_{n+1} &= \mathbf{r}_n + \Delta t \;\mathbf{v}_{n+1/2} \\
 \mathbf{v}_{n+1} &= \mathbf{v}_{n+1/2} + \tfrac{\Delta t}{2}\,\mathbf{a}(\mathbf{r}_{n+1})
 \end{aligned}
-$$
+```
 
 Es simpléctico y temporalmente reversible.
 
@@ -86,8 +86,8 @@ Es simpléctico y temporalmente reversible.
 |:---|:---|:---:|
 | Convergencia en órbita kepleriana excéntrica ($e = 0{,}6$) | Al dividir $\Delta t$ entre 2, el error se reduce en un factor de $3{,}95$ a $3{,}98$ | $\approx 4$ (orden 2) ✅ |
 | Reversibilidad temporal | $\lVert \Delta \mathbf{r} \rVert \sim 2{,}8 \times 10^{-12}$ tras ir y volver | $\sim 10^{-12}$ |
-| Energía, colisión completa ($N = 302$, $\Delta t = 0{,}005$, $t = 30$), semilla 1 | $\max \lvert \Delta E / E_0 \rvert = 4{,}6 \times 10^{-4}$ (0,046 %) | $< 1\,\%$ ✅ |
-| Energía, colisión completa, semilla 42 (`serial.py`) | $\max \lvert \Delta E / E_0 \rvert = 6{,}1 \times 10^{-4}$ (0,06 %) | $< 1\,\%$ ✅ |
+| Energía, colisión completa ($N = 302$, $\Delta t = 0{,}005$, $t = 30$), semilla 1 | $\max \lvert \Delta E / E_0 \rvert = 4{,}6 \times 10^{-4}$ (0,046 %) | $`< 1\,\%`$ ✅ |
+| Energía, colisión completa, semilla 42 (`serial.py`) | $\max \lvert \Delta E / E_0 \rvert = 6{,}1 \times 10^{-4}$ (0,06 %) | $`< 1\,\%`$ ✅ |
 
 > [!NOTE]
 > Con $\Delta t = 0{,}0025$ el máximo fue $8{,}2 \times 10^{-4}$: en esta colisión el error de energía no decrece de forma monótona al reducir $\Delta t$, por lo que $\Delta t = 0{,}005$ es el valor base.
@@ -100,9 +100,9 @@ El cuello de botella es el cálculo de interacciones gravitatorias, $\mathcal{O}
 
 Esto se **mide**, no solo se afirma: `pruebas/perfil_serial.py` (`python medir.py --perfil`) cronometra con `time.perf_counter`, por separado, las fuerzas ($\mathcal{O}(N^2)$ en cada paso), la energía ($\mathcal{O}(N^2)$, solo cada $c$ pasos) y el resto del paso (*kick-drift-kick*, momentos y copia; $\mathcal{O}(N)$). Guarda `resultados/tabla_perfil.csv` con la fracción del paso de cada bloque y la **fracción paralelizable medida**:
 
-$$
+```math
 f_{\text{medida}} \;=\; \frac{t_{\text{fuerzas}} + t_{\text{energía}}/c}{t_{\text{paso}}}
-$$
+```
 
 Esta $f_{\text{medida}}$ se contrasta con la $f$ efectiva del ajuste de Amdahl (sección 6).
 
@@ -130,16 +130,16 @@ Las fuerzas son entre el 87 % y el 98 % del paso (≈ 98 % en Numba para $N \geq
 
 Referencia C, mediana de 4 corridas. La cota se obtiene de:
 
-$$
+```math
 S_p^{\text{cota}} \;=\; \frac{1}{(1 - f_{\text{medida}}) + \dfrac{f_{\text{medida}}}{p}}
-$$
+```
 
 | $N$ | $f_{\text{medida}}$ | Cota $S_6$ | $S_6$ medido | Cota $S_{12}$ | $S_{12}$ medido |
 |---:|---:|---:|---:|---:|---:|
 | 2000 | 0,9978 | 5,94 | **4,96** | 11,7 | **5,17** |
 | 16000 | 0,9993 | 5,98 | **4,52** | 11,9 | **4,31** |
 
-Con $N \geq 2000$ la fracción serial del código ($< 0{,}3\,\%$) permitiría casi el speedup ideal. Con 6 hilos (los 6 núcleos físicos) se alcanza el **84 %** y el **76 %** de esa cota; la pérdida grande aparece al pasar a hilos lógicos: con 12 hilos se obtiene el **44 %** y el **36 %** de la cota.
+Con $N \geq 2000$ la fracción serial del código ($`< 0{,}3\,\%`$) permitiría casi el speedup ideal. Con 6 hilos (los 6 núcleos físicos) se alcanza el **84 %** y el **76 %** de esa cota; la pérdida grande aparece al pasar a hilos lógicos: con 12 hilos se obtiene el **44 %** y el **36 %** de la cota.
 
 > [!IMPORTANT]
 > La pérdida **no** viene de una parte serial del código. La $f \approx 0{,}88$ del ajuste de Amdahl es una fracción *efectiva*: absorbe lo que limita el hardware (frecuencia con todos los núcleos activos, límites térmicos del portátil, hilos lógicos que comparten unidades de ejecución). Solo con $N$ pequeño ($N = 250$, $f_{\text{medida}} = 0{,}93$) la parte serial pesa: la cota a 12 hilos es $\approx 7{,}0$, frente a $3{,}7$ medido.
@@ -169,7 +169,7 @@ Con $N \geq 2000$ la fracción serial del código ($< 0{,}3\,\%$) permitiría ca
 | CPU, dinámica de 400 pasos ($N = 302$) | Diferencia máx. de posición | $4{,}1 \times 10^{-14}$ | — |
 | GPU (`float32`) vs Numba serial (`float64`) | Error relativo máx. de aceleraciones | $9 \times 10^{-7}$ ($N = 250$) a $7 \times 10^{-6}$ ($N = 16000$) | $10^{-5}$ |
 | GPU, dinámica de 400 pasos | Diferencia máx. de posición | $\sim 1{,}2 \times 10^{-4}$ | informativo |
-| GPU, conservación de energía en `float32` ($N = 2002$, 6000 pasos) | $\max \lvert \Delta E/E \rvert$ | $\sim 5 \times 10^{-4}$ | $1\,\%$ |
+| GPU, conservación de energía en `float32` ($N = 2002$, 6000 pasos) | $\max \lvert \Delta E/E \rvert$ | $\sim 5 \times 10^{-4}$ | $`1\,\%`$ |
 
 El error de la GPU crece aproximadamente como $\sqrt{N}$. Los datos están en `benchmarks/verificacion_gpu.csv` (`python pruebas/benchmark_gpu.py --solo-verificacion` lo regenera sin repetir el benchmark).
 
@@ -309,18 +309,18 @@ Cada fila se puede ejecutar por separado (columna «Script») o, más cómodo, c
 
 Con $T_1$ el tiempo con un hilo, $T_p$ el tiempo con $p$ hilos y $f$ la fracción paralelizable del tiempo serial:
 
-$$
+```math
 S_p = \frac{T_1}{T_p}, \qquad
 E_p = \frac{S_p}{p}, \qquad
 S_p^{\text{Amdahl}} = \frac{1}{(1 - f) + \dfrac{f}{p}}, \qquad
 S_\infty = \frac{1}{1 - f}
-$$
+```
 
 En GPU no se habla de $p$ hilos: se reporta el speedup frente a la versión serial y frente a la CPU paralela (la eficiencia por hilo no aplica). El rendimiento del kernel se mide como:
 
-$$
+```math
 \text{Rendimiento} \;=\; \frac{N^{2}}{t_{\text{kernel}}} \quad \text{[interacciones/s]}
-$$
+```
 
 ### Referencias del speedup (qué es $T_1$)
 
