@@ -45,10 +45,41 @@ E = K + U,    K = 0.5 * sum m_i |v_i|^2,    U = -0.5 * G * sum_{i} sum_{j != i} 
 
 El cuello de botella computacional es el cálculo de interacciones gravitatorias (O(N^2) por paso temporal); la integración de posiciones y velocidades es O(N).
 
+Esto se mide, no solo se afirma: `pruebas/perfil_serial.py` (`python medir.py --perfil`) cronometra con `time.perf_counter`, por separado, las fuerzas (O(N^2) cada paso), la energía (O(N^2), solo cada `cada` pasos) y el resto del paso (kick-drift-kick, momentos y copia; O(N)). Guarda `resultados/tabla_perfil.csv` con la fracción del paso que corresponde a cada bloque y la fracción `f_medida` = (fuerzas + energía/cada) / paso, que es la fracción paralelizable real del código. Esa `f_medida` se contrasta con la f efectiva del ajuste de Amdahl (sección 6).
+
+**Perfil del paso de simulación** (`resultados/tabla_perfil.csv`, mediana de 9 repeticiones; la energía se registra cada 10 pasos). Los tiempos son de una sesión y las fracciones son razones dentro de esa misma sesión; el tiempo absoluto de una sesión a otra puede variar hasta ~2x en este portátil.
+
+| Versión | N | Fuerzas (ms) | Energía (ms) | Resto O(N) (ms) | % fuerzas | % energía | % resto | f medida |
+|---|---|---|---|---|---|---|---|---|
+| NumPy (`serial.py`) | 250 | 7,527 | 3,529 | 0,018 | 95,30 | 4,47 | 0,231 | 0,9977 |
+| NumPy (`serial.py`) | 500 | 20,114 | 13,792 | 0,024 | 93,48 | 6,41 | 0,113 | 0,9989 |
+| NumPy (`serial.py`) | 1000 | 84,422 | 70,497 | 0,021 | 92,27 | 7,71 | 0,023 | 0,9998 |
+| NumPy (`serial.py`) | 2000 | 339,410 | 261,495 | 0,051 | 92,83 | 7,15 | 0,014 | 0,9999 |
+| Numba 1 hilo (ref. B) | 250 | 0,213 | 0,180 | 0,017 | 85,93 | 7,27 | 6,795 | 0,9321 |
+| Numba 1 hilo (ref. B) | 500 | 1,436 | 0,419 | 0,026 | 95,52 | 2,79 | 1,697 | 0,9830 |
+| Numba 1 hilo (ref. B) | 1000 | 5,574 | 0,862 | 0,032 | 97,92 | 1,51 | 0,568 | 0,9943 |
+| Numba 1 hilo (ref. B) | 2000 | 17,433 | 3,215 | 0,030 | 98,02 | 1,81 | 0,169 | 0,9983 |
+| Numba 1 hilo (ref. B) | 4000 | 69,680 | 15,396 | 0,062 | 97,75 | 2,16 | 0,087 | 0,9991 |
+| Numba 1 hilo (ref. B) | 8000 | 291,868 | 54,016 | 0,109 | 98,15 | 1,82 | 0,037 | 0,9996 |
+| Numba 1 hilo (ref. B) | 16000 | 1121,750 | 211,249 | 0,629 | 98,10 | 1,85 | 0,055 | 0,9995 |
+
+Las fuerzas son entre 86 % y 98 % del paso (≈98 % en Numba para N ≥ 2000), lo que confirma que son la parte costosa y la que se paraleliza. La energía también es O(N²) y va en paralelo en la versión Numba; el resto del paso (O(N)) es lo único que queda serial. `f medida` = (fuerzas + energía/10) / paso es la fracción paralelizable real del código.
+
+Cota de Amdahl con esa `f medida` frente al speedup medido (referencia C, mediana de 4 corridas):
+
+| N | f medida | Cota a 6 hilos | S medido a 6 | Cota a 12 hilos | S medido a 12 |
+|---|---|---|---|---|---|
+| 2000 | 0,9983 | 5,95 | 3,43 | 11,8 | 4,35 |
+| 16000 | 0,9995 | 5,98 | 3,00 | 11,9 | 4,40 |
+
+Con N ≥ 2000 la fracción serial del código (< 0,2 %) permitiría casi el speedup ideal, y se obtiene menos de la mitad. La pérdida no viene de una parte serial del código. La f ≈ 0,84 del ajuste de Amdahl es una fracción *efectiva*: absorbe lo que limita el hardware (frecuencia con todos los núcleos activos, límites térmicos del portátil, hilos lógicos que comparten unidades de ejecución). Solo en N pequeño (N = 250, `f medida` = 0,93) la parte serial pesa: la cota a 12 hilos es ≈ 6,9, frente a 4,5 medido.
+
 1. CPU paralela (src/cpu_paralelo.py):
    - Paralelización con Numba mediante @njit(parallel=True, fastmath=True) y bucle prange sobre la partícula i.
    - Ausencia de condiciones de carrera: Cada hilo escribe exclusivamente en su fila acc[i, :], evitando secciones críticas o bloqueos atómicos.
    - Control exacto de concurrencia mediante numba.set_num_threads.
+   - GIL: `prange` de Numba compila el bucle a código máquina y se ejecuta fuera del intérprete de Python, así que los hilos corren en paralelo real (con `threading` sobre Python puro el GIL lo impediría).
+   - Reducción: en `_energia_potencial`, `U += ...` dentro de `prange` es una reducción escalar que Numba reconoce y resuelve con una copia privada por hilo, combinadas al final; no hay escritura concurrente sobre una misma variable. El orden de suma cambia con el número de hilos, por eso U puede diferir en el último dígito entre ejecuciones.
 2. GPU CUDA (src/gpu_cuda.py):
    - Un hilo por partícula i.
    - Tiling en memoria compartida (Shared Memory): Los hilos cargan cooperativamente bloques de partículas a la memoria compartida local, reduciendo el tráfico al bus de memoria global en un factor igual al tamaño del bloque (TPB).
@@ -92,6 +123,7 @@ El cuello de botella computacional es el cálculo de interacciones gravitatorias
   - prueba_serial.py: prueba rápida de la versión serial
   - prueba_condiciones.py: condiciones iniciales y estabilidad de una galaxia aislada
   - validacion_fisica.py: orden del integrador, reversibilidad y efecto de dt
+  - perfil_serial.py: perfilado del paso de simulacion (fuerzas vs energia vs resto) y fraccion paralelizable medida
   - benchmark_cpu.py / benchmark_gpu.py: mediciones de tiempo y verificación serial vs paralelo
   - analizar_cpu.py / baselines_cpu.py / resumen_repeticiones.py: tablas y gráficas derivadas de los CSV
   - visualizar.py: render de la colision (imagen final y video)
@@ -126,6 +158,7 @@ conda activate nbody-gpu
 | `python medir.py --all --rapido` | Lo mismo con tamaños reducidos; sirve para comprobar que todo corre. Las mediciones van a `benchmarks/rapido/` y `resultados/rapido/`, así que no tocan los resultados publicados |
 | `python medir.py --cpu` | Mediciones de CPU (4 corridas con pausa de 20 s para enfriar) y reanálisis de tablas |
 | `python medir.py --gpu` | Mediciones de GPU (requiere CUDA) y reanálisis de tablas |
+| `python medir.py --perfil` | Perfilado del paso de simulación (`resultados/tabla_perfil.csv`). También lo ejecutan `--cpu` y `--all` |
 | `python medir.py --analizar` | Solo reanaliza los CSV existentes: speedup, eficiencia, Amdahl y tablas |
 | `python medir.py --figuras` | Figuras de física y de la colisión, incluido el video |
 | `python medir.py --figuras --sin-video` | Igual, sin renderizar el video (mucho más rápido) |
@@ -142,6 +175,7 @@ Cada fila se puede ejecutar por separado (columna "Script") o, más cómodo, con
 |---|---|---|
 | `benchmarks/resultados_cpu_*_c*.csv`, `benchmarks/verificacion_cpu.csv`, `resultados/benchmark_cpu.png` (figura de la última corrida), `resultados/hardware.txt` | `python pruebas/benchmark_cpu.py` | `--cpu` |
 | `benchmarks/resultados_gpu.csv`, `benchmarks/verificacion_gpu.csv`, `resultados/benchmark_gpu.png`, `resultados/hardware_gpu.txt` | `python pruebas/benchmark_gpu.py` (solo la verificación: `--solo-verificacion`) | `--gpu` |
+| `resultados/tabla_perfil.csv` (fracción del paso en fuerzas, energía y resto; `f_medida`) | `python pruebas/perfil_serial.py` | `--perfil` (también `--cpu`, `--all`) |
 | `resultados/analisis_cpu.png` (speedup y eficiencia con Amdahl), `resultados/tabla_speedup_cpu.csv` | `python pruebas/analizar_cpu.py` | `--analizar` |
 | `resultados/tabla_baselines_cpu.csv` (speedup frente a cada referencia) | `python pruebas/baselines_cpu.py` | `--analizar` |
 | `resultados/tabla_repeticiones.csv` | `python pruebas/resumen_repeticiones.py` | `--analizar` |
@@ -217,3 +251,4 @@ Limitaciones: (1) NumPy se repitió solo 3 veces por corrida (por debajo de las 
    - **Precisión distinta (leer antes de interpretar el speedup de GPU):** el kernel de GPU trabaja en float32 y todas las referencias de CPU en float64, así que estas razones de tiempo no comparan exactamente el mismo trabajo numérico. La diferencia favorece a la GPU: en tarjetas de consumo como la GTX 1650 (arquitectura Turing) la doble precisión es mucho más lenta que la simple (del orden de 32 veces menos rendimiento, según la especificación de la arquitectura), de modo que una GPU en float64 daría un speedup bastante menor. En la CPU, float32 también permitiría procesar el doble de datos por instrucción vectorial. Por eso el resultado debe leerse como «GPU en float32 frente a CPU en float64»; la CPU en float32 no se midió.
    - **Costo de usar float32:** el error relativo de las aceleraciones es de ~10^-6 a ~7 x 10^-6 según N (frente a ~10^-16 en CPU) y, como la dinámica es caótica, las trayectorias de GPU y CPU divergen con el tiempo aunque cada paso sea correcto. La conservación de energía en float32 queda registrada en `benchmarks/verificacion_gpu.csv` y cumple el criterio del 1 %.
    - Costo de transferencia PCIe (H2D + D2H) como fracción del tiempo total (kernel + transferencias). Dos corridas de GPU (`resultados_gpu_corrida1.csv` y `resultados_gpu.csv`, la más reciente), rango entre ellas: N = 1000, 50-56 %; N = 4000, 38-59 %; N = 8000, 17-37 %; N = 16000, 7-18 %; N = 32000, 2,5-6 %; N = 64000, 1-2 %. Solo baja del 5 % de forma consistente en N = 64000; en N = 32000 depende de la corrida. Los tiempos de kernel suponen que posiciones y velocidades permanecen en la GPU entre pasos, por lo que en la simulación completa las transferencias no se pagan en cada paso.
+

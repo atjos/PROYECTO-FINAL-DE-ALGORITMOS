@@ -8,6 +8,7 @@ Uso:
     python medir.py --cpu              # solo mediciones de CPU (y reanaliza las tablas)
     python medir.py --gpu              # solo mediciones de GPU (si hay CUDA; y reanaliza las tablas)
     python medir.py --analizar         # reanaliza los CSV existentes: speedup, Amdahl y tablas
+    python medir.py --perfil           # perfilado del paso de simulacion (fuerzas vs energia vs resto)
     python medir.py --figuras          # figuras de fisica y colision (condiciones, validacion, video)
     python medir.py --figuras --sin-video   # igual, pero sin renderizar el video (mucho mas rapido)
 
@@ -16,6 +17,7 @@ Que genera cada paso (ver tambien la tabla "figura -> comando" del README):
                 resultados/benchmark_cpu.png, resultados/hardware.txt
     --gpu       benchmarks/resultados_gpu.csv, benchmarks/verificacion_gpu.csv,
                 resultados/benchmark_gpu.png, resultados/hardware_gpu.txt
+    --perfil    resultados/tabla_perfil.csv (tambien lo ejecutan --cpu y --all)
     --analizar  resultados/analisis_cpu.png, tabla_speedup_cpu.csv,
                 tabla_baselines_cpu.csv, tabla_repeticiones.csv
     --figuras   resultados/condiciones_iniciales.png, estabilidad_galaxia.png,
@@ -113,6 +115,12 @@ def medir_cpu(rapido=False, corridas=4, pausa=20):
     return _script("benchmark_cpu.py", args, "Experimentos de CPU (Numba serial vs Numba paralelo)")
 
 
+def perfilar(rapido=False):
+    """Perfilado del paso de simulacion: que fraccion del tiempo son las fuerzas (criterio 3)."""
+    return _script("perfil_serial.py", ["--rapido"] if rapido else [],
+                   "Perfilado del paso de simulacion (resultados/tabla_perfil.csv)")
+
+
 def medir_gpu(rapido=False):
     try:
         from numba import cuda
@@ -164,6 +172,7 @@ def main():
     parser.add_argument("--cpu", action="store_true", help="Mediciones de CPU (y reanalisis de tablas)")
     parser.add_argument("--gpu", action="store_true", help="Mediciones de GPU (y reanalisis de tablas)")
     parser.add_argument("--all", action="store_true", help="CPU + GPU + tablas + figuras")
+    parser.add_argument("--perfil", action="store_true", help="Perfilado del paso de simulacion (fuerzas vs resto)")
     parser.add_argument("--analizar", action="store_true", help="Reanalizar los CSV existentes (speedup, Amdahl, tablas)")
     parser.add_argument("--figuras", action="store_true", help="Figuras de fisica y de la colision")
     parser.add_argument("--sin-video", action="store_true", help="Con --figuras o --all: no renderiza el video")
@@ -189,6 +198,8 @@ def main():
     if args.all or args.gpu:
         resultados["mediciones GPU"] = medir_gpu(args.rapido)
         hubo_mediciones = True
+    if args.all or args.cpu or args.perfil:
+        resultados["perfilado del paso"] = perfilar(args.rapido)
     if args.all or args.analizar or hubo_mediciones:
         for nombre, ok in zip(("analisis de speedup/Amdahl", "tabla de referencias", "tabla de repeticiones"),
                               analizar()):
