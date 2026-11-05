@@ -217,7 +217,6 @@
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-      //PHYS-START
       const EPS = 0.05,
         EPSG = 0.7,
         RD = 1,
@@ -405,7 +404,6 @@
         const E = nucE();
         S.dE = Math.abs(E / S.E0 - 1);
       }
-      //PHYS-END
       const $ = (id) => document.getElementById(id);
       const cv = $("c"),
         DPR = Math.min(window.devicePixelRatio || 1, 2);

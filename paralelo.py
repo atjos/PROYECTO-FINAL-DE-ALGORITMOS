@@ -20,13 +20,11 @@ import time
 import argparse
 import numpy as np
 
-# Asegurar importación de src/
 RAIZ = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, RAIZ)
 
 from src.condiciones import crear_colision
 
-# Importar backends paralelos
 from src import cpu_paralelo as cpu
 try:
     from src import gpu_cuda as gpu
@@ -47,7 +45,6 @@ def main():
     parser.add_argument("--eps", type=float, default=0.05, help="Parámetro de suavizado (default: 0.05)")
     args = parser.parse_args()
 
-    # Selección automática o forzada de backend
     backend = args.backend
     if backend == "auto":
         backend = "gpu" if GPU_DISPONIBLE else "cpu"
@@ -71,14 +68,13 @@ def main():
     print(f"Configuración: N_por_galaxia={args.n} | Pasos={args.pasos} | dt={args.dt} | eps={args.eps}")
     print("=" * 65)
 
-    # 1. Crear condiciones iniciales
     print("\n[1/4] Generando condiciones iniciales de colisión...")
     pos, vel, masas, gal, nuc = crear_colision(n_por_galaxia=args.n, eps=args.eps, semilla=42)
     n_total = len(masas)
     print(f"      Partículas totales: {n_total}")
 
-    # 2. Calentamiento, FUERA del cronometro. La compilacion JIT (y el arranque del contexto CUDA)
-    #    depende de los tipos de los argumentos, no del tamaño: 64 cuerpos y 2 pasos bastan.
+    # Calentamiento fuera del cronómetro: la compilación JIT y el arranque CUDA
+    # dependen de los tipos de argumentos, no del tamaño (64 cuerpos y 2 pasos bastan).
     print("\n[2/4] Calentamiento (compilación JIT / arranque de la GPU; no cuenta en el tiempo)...")
     simular = gpu.simular if backend == "gpu" else cpu.simular
     k = min(n_total, 64)
@@ -89,7 +85,6 @@ def main():
     t_calentamiento = time.perf_counter() - t0
     print(f"      Calentamiento: {t_calentamiento:.2f} s")
 
-    # 3. Ejecutar simulación (tiempo medido sin compilación)
     print(f"\n[3/4] Integrando {args.pasos} pasos temporales...")
     t0 = time.perf_counter()
     if backend == "gpu":
@@ -98,7 +93,6 @@ def main():
         res = cpu.simular(pos, vel, masas, args.eps, args.dt, args.pasos, cada=max(1, args.pasos // 10), guardar_pos=False)
     tiempo_total = time.perf_counter() - t0   # simular() termina con cuda.synchronize() en GPU
 
-    # 4. Métricas
     dE = np.abs(res["E"] - res["E"][0]) / np.abs(res["E"][0])
     p_max = np.linalg.norm(res["P"], axis=1).max()
     L0 = np.linalg.norm(res["L"][0])

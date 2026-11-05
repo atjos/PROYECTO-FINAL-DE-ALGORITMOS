@@ -69,9 +69,7 @@ def _script(nombre, args=(), descripcion=None):
     return ejecutar_comando([sys.executable, ruta, *args], descripcion or nombre)
 
 
-# ---------------------------------------------------------------------------
-# Comprobacion del entorno
-# ---------------------------------------------------------------------------
+# Comprobación del entorno
 def _version_instalada(paquete):
     for nombre in (paquete, paquete.replace("-", "_")):
         try:
@@ -110,9 +108,7 @@ def comprobar_entorno():
     return True
 
 
-# ---------------------------------------------------------------------------
 # Mediciones
-# ---------------------------------------------------------------------------
 def medir_cpu(rapido=False, corridas=4, pausa=20):
     args = ["--rapido"] if rapido else ["--corridas", str(corridas), "--pausa", str(pausa)]
     return _script("benchmark_cpu.py", args, "Experimentos de CPU (Numba serial vs Numba paralelo)")
@@ -154,9 +150,7 @@ def medir_gpu(rapido=False, corridas=3, pausa=20):
     return ok_total
 
 
-# ---------------------------------------------------------------------------
 # Tablas y figuras derivadas
-# ---------------------------------------------------------------------------
 def analizar():
     """Todo lo que se calcula a partir de los CSV de benchmarks/."""
     pasos = [
