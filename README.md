@@ -86,8 +86,8 @@ Es simpléctico y temporalmente reversible.
 |:---|:---|:---:|
 | Convergencia en órbita kepleriana excéntrica ($e = 0{,}6$) | Al dividir $\Delta t$ entre 2, el error se reduce en un factor de $3{,}95$ a $3{,}98$ | $\approx 4$ (orden 2) ✅ |
 | Reversibilidad temporal | $\lVert \Delta \mathbf{r} \rVert \sim 2{,}8 \times 10^{-12}$ tras ir y volver | $\sim 10^{-12}$ |
-| Energía, colisión completa ($N = 302$, $\Delta t = 0{,}005$, $t = 30$), semilla 1 | $\max \lvert \Delta E / E_0 \rvert = 4{,}6 \times 10^{-4}$ (0,046 %) | $< 1\,\%$ ✅ |
-| Energía, colisión completa, semilla 42 (`serial.py`) | $\max \lvert \Delta E / E_0 \rvert = 6{,}1 \times 10^{-4}$ (0,06 %) | $< 1\,\%$ ✅ |
+| Energía, colisión completa ($N = 302$, $\Delta t = 0{,}005$, $t = 30$), semilla 1 | $\max \lvert \Delta E / E_0 \rvert = 4{,}6 \times 10^{-4}$ (0,046 %) | $\lt 1\,\%$ ✅ |
+| Energía, colisión completa, semilla 42 (`serial.py`) | $\max \lvert \Delta E / E_0 \rvert = 6{,}1 \times 10^{-4}$ (0,06 %) | $\lt 1\,\%$ ✅ |
 
 > [!NOTE]
 > Con $\Delta t = 0{,}0025$ el máximo fue $8{,}2 \times 10^{-4}$: en esta colisión el error de energía no decrece de forma monótona al reducir $\Delta t$, por lo que $\Delta t = 0{,}005$ es el valor base.
@@ -139,7 +139,7 @@ $$
 | 2000 | 0,9978 | 5,94 | **4,96** | 11,7 | **5,17** |
 | 16000 | 0,9993 | 5,98 | **4,52** | 11,9 | **4,31** |
 
-Con $N \geq 2000$ la fracción serial del código ($< 0{,}3\,\%$) permitiría casi el speedup ideal. Con 6 hilos (los 6 núcleos físicos) se alcanza el **84 %** y el **76 %** de esa cota; la pérdida grande aparece al pasar a hilos lógicos: con 12 hilos se obtiene el **44 %** y el **36 %** de la cota.
+Con $N \geq 2000$ la fracción serial del código ($\lt 0{,}3\,\%$) permitiría casi el speedup ideal. Con 6 hilos (los 6 núcleos físicos) se alcanza el **84 %** y el **76 %** de esa cota; la pérdida grande aparece al pasar a hilos lógicos: con 12 hilos se obtiene el **44 %** y el **36 %** de la cota.
 
 > [!IMPORTANT]
 > La pérdida **no** viene de una parte serial del código. La $f \approx 0{,}88$ del ajuste de Amdahl es una fracción *efectiva*: absorbe lo que limita el hardware (frecuencia con todos los núcleos activos, límites térmicos del portátil, hilos lógicos que comparten unidades de ejecución). Solo con $N$ pequeño ($N = 250$, $f_{\text{medida}} = 0{,}93$) la parte serial pesa: la cota a 12 hilos es $\approx 7{,}0$, frente a $3{,}7$ medido.
