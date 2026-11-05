@@ -63,7 +63,7 @@ def main():
     for r in rutas:
         print("  -", os.path.basename(r))
 
-    # ---------- A. Speedup 1 hilo -> max hilos, vs N (seccion 3 de benchmark_cpu) ----------
+    # A. Speedup 1 hilo -> max hilos vs N
     Ns = sorted({n for c in corridas for (impl, n, h)
                 in c if impl == "numba_paralelo"})
     hmax = max(h for c in corridas for (impl, n, h)
@@ -76,7 +76,7 @@ def main():
              for c in corridas if ("numba_paralelo", N, hmax) in c]
         print(f"  {N:6d} | {np.median(s):8.2f} | {min(s):5.2f} - {max(s):5.2f}")
 
-    # ---------- B. Escalado por hilos (seccion 4) ----------
+    # B. Escalado por hilos
     Ns_esc = sorted({n for c in corridas for (impl, n, h)
                     in c if impl == "numba_paralelo_hilos"})
     hilos = sorted({h for c in corridas for (impl, n, h)
@@ -100,7 +100,7 @@ def main():
             print(
                 f"  {h:5d} | {sm:8.2f} | {smin:5.2f} - {smax:5.2f} | {ef:6.0%} | {txt}")
 
-    # ---------- C. Ajuste de Amdahl con N grandes ----------
+    # C. Ajuste de Amdahl con N grandes
     grandes = [N for N in Ns_esc if N >= N_MIN_AJUSTE]
     h_aj, s_aj = [], []
     for N in grandes:
@@ -121,7 +121,7 @@ def main():
                    "speedup_min", "speedup_max", "eficiencia", "f_amdahl"])
         w.writerows(filas)
 
-    # ---------- Figura ----------
+    # Gráfica de speedup y eficiencia
     os.makedirs(os.path.join(RAIZ, "resultados"), exist_ok=True)
     fig, ax = plt.subplots(1, 2, figsize=(12, 4.8))
     p = np.linspace(1, max(hilos), 100)

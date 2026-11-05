@@ -87,9 +87,7 @@ else:
 LISTA_HILOS = sorted({h for h in (1, 2, 4, 6, 8, 12, 16) if h <= MAX_HILOS} | {MAX_HILOS})
 
 
-# ----------------------------------------------------------------------------
 # Utilidades
-# ----------------------------------------------------------------------------
 def medir(f, *args, reps=REPS):
     """Devuelve el arreglo con los 'reps' tiempos (s). La 1a llamada (JIT) no se cuenta."""
     f(*args)
@@ -193,9 +191,7 @@ def info_hardware():
     return lineas
 
 
-# ----------------------------------------------------------------------------
-# 1 y 2. Verificacion serial vs paralelo
-# ----------------------------------------------------------------------------
+# Verificación serial vs paralelo
 def archivar_lotes_previos(nuevos):
     """Mueve a benchmarks/archivo/<SELLO>/ los resultados_cpu*.csv que NO son de esta sesion.
     Se llama solo cuando todas las corridas terminaron bien: si algo falla antes, los datos
@@ -247,9 +243,7 @@ def prueba_correccion():
           f"Numba {abs(r_nb['E'][-1] / r_nb['E'][0] - 1):.2e}")
 
 
-# ----------------------------------------------------------------------------
-# 3 y 4. Rendimiento
-# ----------------------------------------------------------------------------
+# Rendimiento
 def prueba_rendimiento(corrida, ruta_csv):
     filas = []      # (implementacion, N, hilos, rep, tiempo_s)
 
@@ -257,7 +251,7 @@ def prueba_rendimiento(corrida, ruta_csv):
         for k, t in enumerate(tiempos):
             filas.append((nombre, N, h, k, float(t)))
 
-    # ---- 3. Tiempo vs N ----
+    # Tiempo vs N
     print(f"=== CORRIDA {corrida}/{N_CORRIDAS} ===")
     print(f"--- 3. Tiempo de calculo de fuerzas vs N (mediana de {REPS}; hilos max = {MAX_HILOS}) ---")
     numba.set_num_threads(MAX_HILOS)
@@ -284,7 +278,7 @@ def prueba_rendimiento(corrida, ruta_csv):
         print(f"  Numba paralelo vs NumPy (N = {n_ref}): {res_np[n_ref][0] / res_p[n_ref][0]:.1f}x "
               f"(ojo: mezcla compilacion + paralelismo; el speedup de paralelismo puro es el de la seccion 4)")
 
-    # ---- 4. Escalabilidad por hilos, para varios N ----
+    # Escalabilidad por hilos
     # Referencia T1 = MISMO codigo paralelo ejecutado con 1 hilo (definicion estandar de S_p = T1/Tp).
     # El Numba "serial" (sin prange) se mide en las mismas rondas, solo como dato aparte.
     escal = {}      # N -> lista de (h, mediana, iqr, speedup, eficiencia, f)
@@ -326,13 +320,13 @@ def prueba_rendimiento(corrida, ruta_csv):
             print(f"  {h:5d} | {med * 1e3:12.3f} | {iqr * 1e3:9.3f} | {tmin * 1e3:7.3f}-{tmax * 1e3:7.3f} | "
                   f"{sp:7.2f} | {ef:6.0%} | {txt_f}")
 
-    # ---- CSV con todas las repeticiones ----
+    # Guardar CSV con repeticiones
     with open(ruta_csv, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["implementacion", "N", "hilos", "rep", "tiempo_s"])
         w.writerows(filas)
 
-    # ---- Figura: tiempo vs N | speedup | eficiencia ----
+    # Gráficas de rendimiento
     fisicos = nucleos_fisicos()
     fig, ax = plt.subplots(1, 3, figsize=(17, 4.8))
 

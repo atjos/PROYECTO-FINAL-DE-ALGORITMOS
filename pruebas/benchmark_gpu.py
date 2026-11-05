@@ -13,25 +13,6 @@ Que mide (todo con time.perf_counter; la 1a llamada de cada configuracion -compi
     - cpu_serial : Numba compilado sin paralelismo (1 hilo).
     - cpu_paralelo: Numba con prange y todos los hilos.
     Cada tiempo se reporta como MEDIANA de las repeticiones, con IQR y min-max.
-
-Cambios de la v3 respecto a la v2:
-    - Fase GPU primero, con los kernels de TODOS los N medidos INTERCALADOS por rondas y sin carga de CPU
-    en medio; la fase CPU va despues, tras una pausa. Asi el throttling termico/de potencia de un
-    portatil (CPU y GPU comparten presupuesto) no distorsiona un solo N, como paso con N = 16000.
-    - Chequeo automatico: avisa si el kernel de N_TPB difiere >25 % entre el barrido principal y la
-    prueba de TPB (misma configuracion, deben coincidir).
-    - Hardware: nombre real de la CPU y nucleos fisicos (antes imprimia "Family 6 Model 141").
-    - Se silencia el aviso de baja ocupacion de Numba (es esperable con N pequeno; ver el informe).
-
-Verificacion rapida (sin repetir el benchmark; no modifica resultados_gpu.csv):
-    python pruebas/benchmark_gpu.py --solo-verificacion
-
-Salidas:
-    benchmarks/verificacion_gpu.csv    error GPU (float32) vs CPU (float64): aceleraciones para varios N,
-                                       dinamica y conservacion de energia (prueba, N, magnitud, valor, tolerancia, pasa)
-    benchmarks/resultados_gpu.csv      todas las repeticiones (implementacion, N, hilos_o_tpb, rep, tiempo_s)
-    resultados/hardware_gpu.txt        GPU, CPU y versiones usadas
-    resultados/benchmark_gpu.png       tiempo vs N, speedup, desglose de tiempo y sensibilidad a TPB
 """
 import csv
 import os
@@ -100,9 +81,7 @@ else:
     PAUSA_S = 20        # descanso entre la fase GPU y la fase CPU
 
 
-# ----------------------------------------------------------------------------
 # Utilidades
-# ----------------------------------------------------------------------------
 def datos(N, semilla=0):
     rng = np.random.default_rng(semilla)
     return rng.normal(size=(N, 3)), np.full(N, 1.0 / N)
@@ -252,9 +231,7 @@ def info_hardware_gpu():
     return nombre, lineas
 
 
-# ----------------------------------------------------------------------------
-# 1 a 3. Correccion
-# ----------------------------------------------------------------------------
+# Corrección y verificación
 def _guardar_verificacion(filas, anexar):
     """Escribe (o agrega a) benchmarks/verificacion_gpu.csv."""
     modo = "a" if anexar else "w"
@@ -328,9 +305,7 @@ def prueba_energia_float32():
     ], anexar=True)
 
 
-# ----------------------------------------------------------------------------
-# 4 y 5. Rendimiento
-# ----------------------------------------------------------------------------
+# Rendimiento
 def prueba_rendimiento(dev):
     filas = []      # (implementacion, N, hilos_o_tpb, rep, tiempo_s)
 
@@ -347,7 +322,7 @@ def prueba_rendimiento(dev):
         "(c) pausa, (d) CPU.")
     res = {k: {} for k in ("serial", "paralelo", "kernel", "h2d", "d2h")}
 
-    # --- (a) Kernels de TODOS los N, intercalados por rondas, sin carga de CPU en medio ---
+    # Kernels intercalados por rondas
     lanz = {N: lanzador(N, tpb0) for N in LISTA_N}
     for N in LISTA_N:                       # calentamiento: JIT y reloj de la GPU
         lanz[N]()
@@ -361,7 +336,7 @@ def prueba_rendimiento(dev):
             cuda.synchronize()
             t_kern[N].append(time.perf_counter() - t0)
 
-    # --- (b) Transferencias ---
+    # Transferencias de memoria
     for N in LISTA_N:
         t_k = np.array(t_kern[N])
         guardar("gpu_kernel", N, tpb0, t_k)
@@ -371,7 +346,7 @@ def prueba_rendimiento(dev):
         guardar("gpu_d2h", N, tpb0, t_d)
         res["h2d"][N], res["d2h"][N] = resumen(t_h), resumen(t_d)
 
-    # --- (c) Pausa para que el equipo se enfrie, y (d) fase CPU ---
+    # Pausa de enfriamiento y fase CPU
     if PAUSA_S > 0:
         print(f"  (pausa de {PAUSA_S} s antes de medir la CPU)")
         time.sleep(PAUSA_S)
@@ -386,7 +361,7 @@ def prueba_rendimiento(dev):
             guardar("cpu_paralelo", N, MAX_HILOS, t_p)
             res["serial"][N], res["paralelo"][N] = resumen(t_s), resumen(t_p)
 
-    # --- Tabla de tiempos ---
+    # Resumen de tiempos
     print(f"\n  {'N':>6} | {'serial (s)':>16} | {'CPU ' + str(MAX_HILOS) + 'h (s)':>16} | "
         f"{'GPU kernel (ms)':>17} | {'H2D (ms)':>9} | {'D2H (ms)':>9} | {'transf./total':>13} | {'Ginter/s':>8}")
     for N in LISTA_N:
@@ -400,7 +375,7 @@ def prueba_rendimiento(dev):
         print(f"  {N:6d} | {txt_s} | {txt_p} | {k[0] * 1e3:9.3f} ({k[1] * 1e3:.3f}) | "
               f"{h[0] * 1e3:9.3f} | {d[0] * 1e3:9.3f} | {(h[0] + d[0]) / tot:13.0%} | {N * N / k[0] / 1e9:8.1f}")
 
-    # --- Tabla de speedups (cociente de medianas) ---
+    # Speedups de GPU
     print("\n  Speedup de la GPU = T_referencia / T_GPU   (\"kernel\": datos ya en la GPU; "
         "\"total\": kernel + H2D + D2H)")
     print(f"  {'N':>6} | {'kernel vs serial':>16} | {'kernel vs CPU ' + str(MAX_HILOS) + 'h':>17} | "
@@ -422,7 +397,7 @@ def prueba_rendimiento(dev):
     print("  Nota: la eficiencia por hilo no aplica en GPU (rubrica); se reporta speedup frente a serial y "
         "frente a la CPU paralela.")
 
-    # --- 5. Sensibilidad al tamano de bloque ---
+    # Sensibilidad al tamaño de bloque (TPB)
     print(
         f"\n--- 5. Sensibilidad al tamaño de bloque (N = {N_TPB}, mediana de {REPS_GPU} rep.) ---")
     res_tpb = {}
@@ -434,7 +409,7 @@ def prueba_rendimiento(dev):
         print(f"  hilos por bloque = {tpb:4d}: {m * 1e3:8.3f} ms   IQR {iqr * 1e3:.3f}   "
               f"min-max {lo * 1e3:.3f}-{hi * 1e3:.3f}")
 
-    # --- Chequeo de coherencia: misma config. (N_TPB, tpb0) medida en dos fases distintas ---
+    # Chequeo de coherencia
     if N_TPB in res["kernel"] and tpb0 in res_tpb:
         a, b = res["kernel"][N_TPB][0], res_tpb[tpb0][0]
         dif = abs(a / b - 1)
@@ -452,7 +427,7 @@ def prueba_rendimiento(dev):
         w.writerow(["implementacion", "N", "hilos_o_tpb", "rep", "tiempo_s"])
         w.writerows(filas)
 
-    # --- Figura 2 x 2 ---
+    # Gráficas 2x2
     fig, ax = plt.subplots(2, 2, figsize=(13, 9.5))
 
     def serie(a, r, etiqueta, marcador):

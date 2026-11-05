@@ -16,7 +16,6 @@ import time
 import argparse
 import numpy as np
 
-# Asegurar importación de src/
 RAIZ = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, RAIZ)
 
@@ -36,19 +35,16 @@ def main():
     print(f"Configuración: N_por_galaxia={args.n} | Pasos={args.pasos} | dt={args.dt} | eps={args.eps}")
     print("=" * 65)
 
-    # 1. Crear condiciones iniciales
     print("\n[1/3] Generando condiciones iniciales de colisión...")
     pos, vel, masas, gal, nuc = crear_colision(n_por_galaxia=args.n, eps=args.eps, semilla=42)
     n_total = len(masas)
     print(f"      Partículas totales: {n_total} (incluye núcleos masivos)")
 
-    # 2. Ejecutar simulación
     print(f"\n[2/3] Integrando {args.pasos} pasos temporales (Leapfrog Kick-Drift-Kick)...")
     t0 = time.perf_counter()
     res = simular(pos, vel, masas, args.eps, args.dt, args.pasos, cada=max(1, args.pasos // 10))
     tiempo_total = time.perf_counter() - t0
 
-    # 3. Reporte de física y tiempos
     dE = np.abs(res["E"] - res["E"][0]) / np.abs(res["E"][0])
     p_max = np.linalg.norm(res["P"], axis=1).max()
     L0 = np.linalg.norm(res["L"][0])
