@@ -14,7 +14,7 @@ Paquetes de Python:
   pillow         13.0.0
   opencv-python  no instalado
   imageio        no instalado
-  psutil         no instalado
+  psutil         7.2.2
 
 GPU / CUDA:
   GPU                      : NVIDIA GeForce GTX 1650

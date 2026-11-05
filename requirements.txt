@@ -6,14 +6,14 @@ numpy==2.4.6
 numba==0.66.0         # conda
 matplotlib==3.11.2
 scipy==1.17.1         # filtros gaussianos y de suavizado (visualizar.py)
-pillow==13.0.0         # conda; texto sobre los cuadros (visualizar.py)
+pillow==13.0.0      # conda; texto sobre los cuadros (visualizar.py)
+psutil==7.2.2      # conda; núcleos físicos y RAM para hardware*.txt
 
 # --- GPU (solo para benchmark_gpu.py y visualizar.py --backend gpu) ---
 # Requiere un driver de NVIDIA compatible con CUDA 12.
 numba-cuda==0.30.4    # conda
 
 # --- Opcionales (NO están instalados en el entorno nbody-gpu usado para las mediciones) ---
-# psutil                # detecta los núcleos físicos; sin él se consulta PowerShell en Windows
 # opencv-python         # desenfoque más rápido y guardado de PNG; sin él se usa scipy y pillow
 # imageio               # escribe un GIF si no hay ffmpeg
 # ffmpeg (programa externo) permite guardar la animación en MP4

@@ -183,10 +183,11 @@ El error de la GPU crece aproximadamente como $\sqrt{N}$. Los datos están en `b
 | Componente | Detalle |
 |:---|:---|
 | **CPU** | Intel Core i5-11400H @ 2,70 GHz — 6 núcleos físicos / 12 hilos lógicos |
+| **RAM** | 16 GB |
 | **GPU** | NVIDIA GeForce GTX 1650 Mobile — 4 GiB GDDR6, 14 SMs, Compute Capability 7.5 |
 | **Sistema operativo** | Windows 11 (build 10.0.26300) |
 | **Entorno** | Python 3.11 en Conda (`nbody-gpu`) |
-| **Librerías** (`requirements.txt`) | NumPy 2.4.6 · Numba 0.66.0 · Numba-CUDA 0.30.4 · Matplotlib 3.11.2 |
+| **Librerías** (`requirements.txt`) | NumPy 2.4.6 · Numba 0.66.0 · Numba-CUDA 0.30.4 · Matplotlib 3.11.2 · psutil 7.2.2 |
 | **CUDA Runtime** | 12.9 |
 
 Versión de Numba con la que se hizo cada medición (la registra el propio script en `resultados/hardware*.txt`):
