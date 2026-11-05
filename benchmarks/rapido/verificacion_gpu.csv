@@ -1,0 +1,14 @@
+prueba,N,magnitud,valor,tolerancia,pasa_tolerancia
+aceleraciones,250,error_rel_max,8.945967792105377e-07,1e-05,True
+aceleraciones,1000,error_rel_max,7.065037767756114e-07,1e-05,True
+aceleraciones,2000,error_rel_max,1.6430054506689803e-06,1e-05,True
+aceleraciones,4000,error_rel_max,2.3039929296336234e-06,1e-05,True
+aceleraciones,8000,error_rel_max,3.834715672775006e-06,1e-05,True
+aceleraciones,16000,error_rel_max,6.9203385384073495e-06,1e-05,True
+energia_potencial,1000,error_rel,9.604400733730166e-08,1e-05,True
+dinamica_400_pasos,302,dif_max_posicion,0.00012387704623240126,,informativo
+dinamica_400_pasos,302,variacion_energia_cpu,5.667201592451931e-07,0.01,True
+dinamica_400_pasos,302,variacion_energia_gpu,1.3468884110245938e-06,0.01,True
+energia_float32_1000_pasos,2002,max_dE_sobre_E,2.31473548684275e-06,0.01,True
+energia_float32_1000_pasos,2002,cambio_rel_L,2.877459896364278e-06,,informativo
+energia_float32_1000_pasos,2002,P_max,5.217346583158565e-07,,informativo

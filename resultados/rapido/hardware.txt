@@ -1,0 +1,9 @@
+Fecha: 2026-11-04 20:54
+Script: benchmark_cpu v3 (un CSV por corrida)
+Sistema: Windows-10-10.0.26300-SP0
+Procesador: 11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz
+Python: 3.11.17
+NumPy: 2.4.6   Numba: 0.66.0
+Nucleos fisicos: 6
+Hilos logicos (os.cpu_count): 12
+Hilos usados por Numba (maximo): 12

@@ -3,7 +3,7 @@ Cuenta cuantas repeticiones respaldan cada medicion (para verificar el criterio 
 
 Uso:
     python pruebas/resumen_repeticiones.py
-Lee benchmarks/resultados_cpu*.csv y benchmarks/resultados_gpu.csv.
+Lee benchmarks/resultados_cpu*.csv y benchmarks/resultados_gpu_corrida*.csv (o resultados_gpu.csv).
 Salida: resultados/tabla_repeticiones.csv
 
 Definiciones: una "corrida" es una ejecucion completa e independiente de benchmark_cpu.py (un CSV);
@@ -45,7 +45,10 @@ def contar(rutas, bloques):
 
 def main():
     cpu = sorted(glob.glob(os.path.join(RAIZ, "benchmarks", "resultados_cpu*.csv")))
-    gpu = [os.path.join(RAIZ, "benchmarks", "resultados_gpu.csv")]
+    # varias corridas de GPU: resultados_gpu_corrida<k>.csv (si no hay, el resultados_gpu.csv unico)
+    gpu = sorted(glob.glob(os.path.join(RAIZ, "benchmarks", "resultados_gpu_corrida*.csv")))
+    if not gpu:
+        gpu = [os.path.join(RAIZ, "benchmarks", "resultados_gpu.csv")]
     filas = []
     for rutas, bloques in ((cpu, BLOQUES_CPU), (gpu, BLOQUES_GPU)):
         reps = contar(rutas, bloques)

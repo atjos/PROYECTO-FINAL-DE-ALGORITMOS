@@ -29,6 +29,9 @@ import os
 import re
 import argparse
 import subprocess
+import glob
+import shutil
+import time
 from importlib import metadata
 
 RAIZ = os.path.dirname(os.path.abspath(__file__))
@@ -121,7 +124,9 @@ def perfilar(rapido=False):
                    "Perfilado del paso de simulacion (resultados/tabla_perfil.csv)")
 
 
-def medir_gpu(rapido=False):
+def medir_gpu(rapido=False, corridas=3, pausa=20):
+    """Varias corridas completas de benchmark_gpu.py. Cada corrida sobrescribe benchmarks/resultados_gpu.csv,
+    asi que despues de cada una se copia a resultados_gpu_corrida<k>.csv (lo que luego consolida resumen_gpu.py)."""
     try:
         from numba import cuda
         if not cuda.is_available():
@@ -130,8 +135,23 @@ def medir_gpu(rapido=False):
     except ImportError:
         print("[AVISO] Numba CUDA no esta instalado. Se omite el benchmark de GPU.", file=sys.stderr)
         return False
-    return _script("benchmark_gpu.py", ["--rapido"] if rapido else [],
-                   "Experimentos de GPU (kernel CUDA con tiling vs CPU)")
+    carpeta = os.path.join(RAIZ, "benchmarks", "rapido") if rapido else os.path.join(RAIZ, "benchmarks")
+    if rapido:
+        corridas = 1
+    for ruta in glob.glob(os.path.join(carpeta, "resultados_gpu_corrida*.csv")):
+        os.remove(ruta)          # solo quedan las corridas de esta sesion; no se mezclan sesiones
+    ok_total = True
+    for k in range(1, corridas + 1):
+        ok = _script("benchmark_gpu.py", ["--rapido"] if rapido else [],
+                     f"Experimentos de GPU, corrida {k} de {corridas} (kernel CUDA con tiling vs CPU)")
+        origen = os.path.join(carpeta, "resultados_gpu.csv")
+        if ok and os.path.isfile(origen):
+            shutil.copyfile(origen, os.path.join(carpeta, f"resultados_gpu_corrida{k}.csv"))
+        ok_total = ok_total and ok
+        if k < corridas and pausa > 0:
+            print(f"\n[INFO] Pausa de {pausa:.0f} s para enfriar antes de la siguiente corrida de GPU...", flush=True)
+            time.sleep(pausa)
+    return ok_total
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +163,7 @@ def analizar():
         ("analizar_cpu.py", "Speedup, eficiencia y ajuste de Amdahl (analisis_cpu.png, tabla_speedup_cpu.csv)"),
         ("baselines_cpu.py", "Speedup frente a cada referencia (tabla_baselines_cpu.csv)"),
         ("resumen_repeticiones.py", "Repeticiones por configuracion (tabla_repeticiones.csv)"),
+        ("resumen_gpu.py", "Consolidado de corridas de GPU: mediana y rango (tabla_gpu.csv)"),
     ]
     return [_script(n, (), d) for n, d in pasos]
 
@@ -179,6 +200,7 @@ def main():
     parser.add_argument("--rapido", action="store_true", help="Ejecucion reducida para verificar que todo corre")
     parser.add_argument("--corridas", type=int, default=4, help="Corridas de CPU (default: 4)")
     parser.add_argument("--pausa", type=float, default=20.0, help="Pausa entre corridas de CPU, en s (default: 20)")
+    parser.add_argument("--corridas-gpu", type=int, default=3, help="Corridas de GPU (default: 3)")
     args = parser.parse_args()
 
     if len(sys.argv) == 1:
@@ -196,12 +218,13 @@ def main():
         resultados["mediciones CPU"] = medir_cpu(args.rapido, args.corridas, args.pausa)
         hubo_mediciones = True
     if args.all or args.gpu:
-        resultados["mediciones GPU"] = medir_gpu(args.rapido)
+        resultados["mediciones GPU"] = medir_gpu(args.rapido, args.corridas_gpu, args.pausa)
         hubo_mediciones = True
     if args.all or args.cpu or args.perfil:
         resultados["perfilado del paso"] = perfilar(args.rapido)
     if args.all or args.analizar or hubo_mediciones:
-        for nombre, ok in zip(("analisis de speedup/Amdahl", "tabla de referencias", "tabla de repeticiones"),
+        for nombre, ok in zip(("analisis de speedup/Amdahl", "tabla de referencias", "tabla de repeticiones",
+                               "tabla consolidada de GPU"),
                               analizar()):
             resultados[nombre] = ok
     if args.all or args.figuras:

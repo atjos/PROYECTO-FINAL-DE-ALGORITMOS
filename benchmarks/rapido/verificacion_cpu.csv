@@ -1,0 +1,5 @@
+N,implementacion,error_rel_max,pasa_tolerancia
+250,numba 1 hilo,2.3822208915897776e-16,True
+250,numba paralelo,3.176294522119703e-16,True
+1000,numba 1 hilo,3.5879185160985297e-16,True
+1000,numba paralelo,2.870334812878824e-16,True

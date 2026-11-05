@@ -273,7 +273,7 @@ def prueba_rendimiento(corrida, ruta_csv):
         res_s[N], res_p[N] = resumen(t_s), resumen(t_p)
         txt_np = f"{'-':>11}"
         if N <= N_NUMPY_MAX:
-            t_np = medir(fisica.aceleraciones, pos, masas, EPS, reps=min(REPS, 3))
+            t_np = medir(fisica.aceleraciones, pos, masas, EPS, reps=5)
             guardar("numpy", N, 1, t_np)
             res_np[N] = resumen(t_np)
             txt_np = f"{res_np[N][0] * 1e3:11.3f}"

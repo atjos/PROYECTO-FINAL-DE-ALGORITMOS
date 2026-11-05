@@ -1,0 +1,29 @@
+Sistema operativo : Windows-10-10.0.26300-SP0
+Procesador        : Intel64 Family 6 Model 141 Stepping 1, GenuineIntel
+Python            : 3.11.17  (C:\Users\juan jose\.conda\envs\nbody-gpu\python.exe)
+
+Paquetes de Python:
+  numpy          2.4.6
+  numba          0.66.0
+  llvmlite       0.48.0
+  numba-cuda     0.30.4
+  cuda-python    no instalado
+  cuda-bindings  12.9.9
+  matplotlib     3.11.2
+  scipy          1.17.1
+  pillow         13.0.0
+  opencv-python  no instalado
+  imageio        no instalado
+  psutil         no instalado
+
+GPU / CUDA:
+  GPU                      : NVIDIA GeForce GTX 1650
+  Capacidad de computo     : 7.5
+  Multiprocesadores (SM)   : 14
+  CUDA runtime (numba)     : 12.9
+  CUDA soportado por driver: 13.5
+  Driver NVIDIA            : 621.14
+
+Programas externos:
+  ffmpeg   ffmpeg version 7.1.1-essentials_build-www.gyan.dev Copyright (c) 2000-2025 the FFmpeg developers
+  conda    conda 26.9.3

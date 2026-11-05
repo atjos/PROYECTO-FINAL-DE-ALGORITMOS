@@ -342,6 +342,9 @@ def main():
     if a.rapido:
         a.n, a.pasos, a.cada, a.res = min(
             a.n, 400), min(a.pasos, 1500), 10, "640x360"
+        # la prueba rapida NO debe pisar colision_final.png / colision.mp4 publicados
+        if a.salida == os.path.join(RAIZ, "resultados", "colision"):
+            a.salida = os.path.join(RAIZ, "resultados", "rapido", "colision")
     W, H = (int(v) // 2 * 2 for v in a.res.lower().split("x"))
     os.makedirs(os.path.dirname(a.salida), exist_ok=True)
 
