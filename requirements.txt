@@ -1,7 +1,7 @@
 # Python 3.11
 # Entorno conda: nbody-gpu (los paquetes marcados "conda" se instalaron con conda, no con pip)
 
-# --- Núcleo (obligatorio) ---
+# --- Núcleo (obligatorio) SUPER IMPORTANTES ---
 numpy==2.4.6
 numba==0.66.0         # conda
 matplotlib==3.11.2
